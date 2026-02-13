@@ -1,0 +1,9 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+tiktoken>=0.7
+transformers>=4.40
+tokenizers>=0.19
+sentencepiece>=0.2
+pydantic>=2.7
+unicodedata2>=15.1.0
+websockets>=12.0
