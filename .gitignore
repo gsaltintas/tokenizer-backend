@@ -1,4 +1,10 @@
 .vercel
 *.pyc
-*/__pycache__/*
-.venv/*
+__pycache__/
+.venv/
+*.py[codz]
+app/__pycache__/
+app/services/__pycache__/
+app/routers/__pycache__/
+app/models/__pycache__/
+
