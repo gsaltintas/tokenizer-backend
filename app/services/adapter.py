@@ -1,4 +1,29 @@
 from abc import ABC, abstractmethod
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def _gpt2_unicode_to_bytes() -> dict[str, int]:
+    """Build the inverse of GPT-2's bytes_to_unicode mapping.
+
+    GPT-2 BPE maps each byte value (0-255) to a printable Unicode character
+    so vocabulary strings are displayable.  For example byte 0x20 (space)
+    maps to Ġ (U+0120).  This function returns the reverse: char -> byte.
+    """
+    # Ranges that map to themselves (printable Latin-1 chars)
+    bs = (
+        list(range(ord("!"), ord("~") + 1))
+        + list(range(ord("¡"), ord("¬") + 1))
+        + list(range(ord("®"), ord("ÿ") + 1))
+    )
+    cs = bs[:]
+    n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b)
+            cs.append(256 + n)
+            n += 1
+    return {chr(c): b for b, c in zip(bs, cs)}
 
 
 class TokenizerAdapter(ABC):
@@ -21,6 +46,11 @@ class TokenizerAdapter(ABC):
     def get_merges(self) -> list[tuple[str, str]] | None:
         """Return BPE merge rules if available, else None."""
         ...
+
+    def get_merge_ranks(self) -> dict[bytes, int] | None:
+        """Return mapping of byte-sequence -> rank for BPE merge tree building.
+        Lower rank = earlier merge. Returns None if not available."""
+        return None
 
     @abstractmethod
     def vocab_size(self) -> int:
@@ -112,6 +142,9 @@ class TiktokenAdapter(TokenizerAdapter):
                 merges.append((left_str, right_str))
         return merges
 
+    def get_merge_ranks(self) -> dict[bytes, int] | None:
+        return dict(self._encoding._mergeable_ranks)
+
     def vocab_size(self) -> int:
         return self._encoding.n_vocab
 
@@ -170,6 +203,31 @@ class HuggingFaceAdapter(TokenizerAdapter):
         except Exception:
             pass
         return None
+
+    def get_merge_ranks(self) -> dict[bytes, int] | None:
+        if self._type != "bpe":
+            return None
+
+        # Build the GPT-2 unicode-to-byte mapping.
+        # GPT-2 BPE maps each byte to a printable Unicode char so that
+        # vocab strings are displayable.  E.g. byte 0x20 (space) -> Ġ (U+0120).
+        unicode_to_byte = _gpt2_unicode_to_bytes()
+
+        vocab = self._tokenizer.get_vocab()
+        ranks: dict[bytes, int] = {}
+        for token_str, token_id in vocab.items():
+            if token_str.startswith("<") and token_str.endswith(">"):
+                continue
+            try:
+                # Try GPT-2 byte decoding first (each char maps to one byte)
+                if all(ch in unicode_to_byte for ch in token_str):
+                    token_bytes = bytes(unicode_to_byte[ch] for ch in token_str)
+                else:
+                    token_bytes = token_str.encode("utf-8")
+                ranks[token_bytes] = token_id
+            except Exception:
+                pass
+        return ranks if ranks else None
 
     def vocab_size(self) -> int:
         return self._tokenizer.vocab_size

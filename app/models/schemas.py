@@ -176,3 +176,49 @@ class EfficiencyMetric(BaseModel):
 
 class EfficiencyResponse(BaseModel):
     metrics: list[EfficiencyMetric]
+
+
+# ── Merge Tree ────────────────────────────────────────────────────────────────
+
+
+class MergeTreeRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=200)
+    tokenizer_ids: list[str] = Field(..., min_length=2, max_length=2)
+
+
+class MergeTreeNode(BaseModel):
+    token: str
+    rank: int
+    is_leaf: bool
+    left: "MergeTreeNode | None" = None
+    right: "MergeTreeNode | None" = None
+
+
+class MergeStepInfo(BaseModel):
+    step: int
+    merged_token: str
+    rank: int
+    tokens_after: list[str]
+
+
+class MergeTreeTokenizerResult(BaseModel):
+    name: str
+    trees: list[MergeTreeNode]
+    steps: list[MergeStepInfo]
+    final_tokens: list[str]
+
+
+class ConflictAnalysis(BaseModel):
+    shared_intermediates: list[str]
+    only_a: list[str]
+    only_b: list[str]
+    is_compatible: bool
+    conflict_count: int
+
+
+class MergeTreeComparisonResponse(BaseModel):
+    text: str
+    initial_bytes: list[str]
+    tokenizer_a: MergeTreeTokenizerResult
+    tokenizer_b: MergeTreeTokenizerResult
+    conflict_analysis: ConflictAnalysis

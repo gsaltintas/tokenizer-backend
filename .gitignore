@@ -1,1 +1,4 @@
 .vercel
+*.pyc
+*/__pycache__/*
+.venv/*

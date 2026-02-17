@@ -84,13 +84,27 @@ class TokenizerRegistry:
         """List available preset tokenizers."""
         presets = []
         seen_encodings = set()
-        presets.append({
+        presets.extend([{
+            "id": "meta-llama/Llama-3.2-1B",
+            "name": "meta-llama/Llama-3.2-1B",
+            "vocab_size": 0,
+            "tokenizer_type": "bpe",
+            "source": "huggingface",
+        },
+        {
+            "id": "Qwen/Qwen3-8B",
+            "name": "Qwen/Qwen3-8B",
+            "vocab_size": 0,
+            "tokenizer_type": "bpe",
+            "source": "huggingface",
+        },
+        {
             "id": "google/gemma-2-2b",
             "name": "google/gemma-2-2b",
             "vocab_size": 0,
             "tokenizer_type": "bpe",
             "source": "huggingface",
-        })
+        },])
         for alias, encoding in TIKTOKEN_ENCODINGS.items():
             if encoding not in seen_encodings:
                 presets.append(
