@@ -12,8 +12,14 @@ def _build_tokens(adapter, text: str) -> list[TokenInfo]:
     token_ids = adapter.encode(text)
     tokens: list[TokenInfo] = []
     offset = 0
-    for tid in token_ids:
-        token_str = adapter.decode_single(tid)
+    prev_decoded = ""
+    for i, tid in enumerate(token_ids):
+        # Use incremental decoding to preserve context (e.g. SentencePiece ▁ → space).
+        # Decode prefix token_ids[:i+1] and diff against previous prefix.
+        curr_decoded = adapter.decode(token_ids[: i + 1])
+        token_str = curr_decoded[len(prev_decoded):]
+        prev_decoded = curr_decoded
+
         token_bytes = token_str.encode("utf-8", errors="replace")
         start = text.find(token_str, offset)
         if start == -1:

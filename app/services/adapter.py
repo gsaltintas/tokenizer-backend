@@ -179,7 +179,6 @@ class HuggingFaceAdapter(TokenizerAdapter):
                 self._type = "unigram"
             elif "wordpiece" in model_type:
                 self._type = "wordpiece"
-        print("hello")
     def encode(self, text: str) -> list[int]:
         return self._tokenizer.encode(text, add_special_tokens=False)
 

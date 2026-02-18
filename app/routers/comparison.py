@@ -40,6 +40,8 @@ async def get_overlap(req: ComparisonOverlapRequest):
 async def compare_tokenize(req: ComparisonTokenizeRequest):
     adapters = _get_adapters(req.tokenizer_ids)
     results = compare_tokenization(adapters, req.text)
+    print(results)
+    print(adapters)
     return ComparisonTokenizeResponse(
         results=[
             TokenizerTokenization(
