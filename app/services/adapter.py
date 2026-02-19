@@ -322,3 +322,51 @@ class SentencePieceAdapter(TokenizerAdapter):
     @property
     def source(self) -> str:
         return "sentencepiece"
+
+
+class TokenMonsterAdapter(TokenizerAdapter):
+    def __init__(self, vocab_name: str):
+        import tokenmonster
+        self._vocab = tokenmonster.load(vocab_name)
+        self._vocab_name = vocab_name
+        self._vocab_dict: dict[str, int] | None = None
+
+    def encode(self, text: str) -> list[int]:
+        tokens = self._vocab.tokenize(text)
+        return tokens.tolist()
+
+    def decode(self, ids: list[int]) -> str:
+        return self._vocab.decode(ids)
+
+    def get_vocab(self) -> dict[str, int]:
+        if self._vocab_dict is None:
+            self._vocab_dict = {}
+            for i in range(len(self._vocab)):
+                try:
+                    token_str = self._vocab.id_to_token_decoded(i)
+                    if token_str is not None:
+                        self._vocab_dict[token_str] = i
+                except Exception:
+                    pass
+        return self._vocab_dict
+
+    def get_merges(self) -> list[tuple[str, str]] | None:
+        return None
+
+    def vocab_size(self) -> int:
+        return len(self._vocab)
+
+    def token_to_bytes(self, token: str) -> bytes:
+        return token.encode("utf-8")
+
+    @property
+    def name(self) -> str:
+        return self._vocab_name
+
+    @property
+    def tokenizer_type(self) -> str:
+        return "unigram"
+
+    @property
+    def source(self) -> str:
+        return "tokenmonster"

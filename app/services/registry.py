@@ -5,8 +5,19 @@ from app.services.adapter import (
     HuggingFaceAdapter,
     SentencePieceAdapter,
     TiktokenAdapter,
+    TokenMonsterAdapter,
     TokenizerAdapter,
 )
+
+# Known TokenMonster preset vocabulary names
+TOKENMONSTER_VOCABS = {
+    "english-32000-consistent-v1",
+    "english-24000-consistent-v1",
+    "englishcode-32000-consistent-v1",
+    "englishcode-32000-balanced-v1",
+    "code-32000-consistent-v1",
+    "fiction-24000-consistent-v1",
+}
 
 # Known tiktoken encoding names
 TIKTOKEN_ENCODINGS = {
@@ -50,7 +61,11 @@ class TokenizerRegistry:
         if name.endswith(".model") and os.path.exists(name):
             return SentencePieceAdapter(name)
 
-        # 3. Try as HuggingFace model ID
+        # 3. Check if it's a TokenMonster vocab (.vocab file or known preset name)
+        if name.endswith(".vocab") or name in TOKENMONSTER_VOCABS:
+            return TokenMonsterAdapter(name)
+
+        # 4. Try as HuggingFace model ID
         try:
             return HuggingFaceAdapter(name)
         except Exception as e:
@@ -105,6 +120,14 @@ class TokenizerRegistry:
             "tokenizer_type": "bpe",
             "source": "huggingface",
         },])
+        for tm_name in sorted(TOKENMONSTER_VOCABS):
+            presets.append({
+                "id": tm_name,
+                "name": tm_name,
+                "tokenizer_type": "unigram",
+                "vocab_size": 0,
+                "source": "tokenmonster",
+            })
         for alias, encoding in TIKTOKEN_ENCODINGS.items():
             if encoding not in seen_encodings:
                 presets.append(
