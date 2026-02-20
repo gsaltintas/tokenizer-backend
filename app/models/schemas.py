@@ -222,3 +222,46 @@ class MergeTreeComparisonResponse(BaseModel):
     tokenizer_a: MergeTreeTokenizerResult
     tokenizer_b: MergeTreeTokenizerResult
     conflict_analysis: ConflictAnalysis
+
+
+# ── Merge Forest ─────────────────────────────────────────────────────────────
+
+
+class MergeForestEntry(BaseModel):
+    token: str
+    token_hex: str
+    rank: int
+    byte_length: int
+    is_leaf: bool
+    is_root: bool
+    left: str | None = None
+    left_hex: str | None = None
+    left_rank: int | None = None
+    right: str | None = None
+    right_hex: str | None = None
+    right_rank: int | None = None
+
+
+class MergeForestResponse(BaseModel):
+    entries: list[MergeForestEntry]
+    total: int
+    page: int
+    page_size: int
+    total_leaves: int
+    total_merges: int
+    total_roots: int
+
+
+class MergeForestSubtreeNode(BaseModel):
+    token: str
+    token_hex: str
+    rank: int
+    is_leaf: bool
+    left: "MergeForestSubtreeNode | None" = None
+    right: "MergeForestSubtreeNode | None" = None
+
+
+class MergeForestSubtreeResponse(BaseModel):
+    root: MergeForestSubtreeNode
+    depth: int
+    node_count: int

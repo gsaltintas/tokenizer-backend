@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     comparison,
     language,
+    merge_forest,
     merge_tree,
     morphemes,
     multiplicity,
@@ -66,6 +67,7 @@ app.include_router(morphemes.router)
 app.include_router(undertrained.router)
 app.include_router(comparison.router)
 app.include_router(merge_tree.router)
+app.include_router(merge_forest.router)
 
 
 @app.get("/api/health")
