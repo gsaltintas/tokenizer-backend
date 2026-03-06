@@ -5,8 +5,10 @@ from app.models.schemas import (
     MergeForestResponse,
     MergeForestSubtreeNode,
     MergeForestSubtreeResponse,
+    MergeForestTreeInfo,
+    MergeForestTreesResponse,
 )
-from app.services.merge_forest import get_cached_entries, get_subtree
+from app.services.merge_forest import get_cached_entries, get_subtree, tree_depth, tree_node_count
 from app.services.registry import registry
 
 router = APIRouter(prefix="/api/merge-forest", tags=["merge-forest"])
@@ -86,6 +88,78 @@ async def get_merge_forest_subtree(
         root=_dict_to_schema(tree),
         depth=depth,
         node_count=node_count,
+    )
+
+
+@router.get("/trees/{tok_id:path}", response_model=MergeForestTreesResponse)
+async def get_merge_forest_trees(
+    tok_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: str = "",
+    sort_by: str = Query("byte_length", pattern="^(rank|byte_length|depth)$"),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+):
+    """Return paginated root trees (connected components) with full subtrees."""
+    _, ranks = _get_adapter_and_ranks(tok_id)
+    entries = get_cached_entries(tok_id, ranks)
+
+    # Only root non-leaf entries are connected component roots
+    roots = [e for e in entries if e.is_root and not e.is_leaf]
+
+    # Search across the full tree (match root token string)
+    if search:
+        search_lower = search.lower()
+        roots = [
+            e for e in roots
+            if search_lower in e.token_str().lower() or search_lower in e.token_hex()
+        ]
+
+    # Compute depth for sorting (cached per call)
+    depth_cache: dict[bytes, int] = {}
+
+    def get_depth(e) -> int:
+        if e.token_bytes not in depth_cache:
+            depth_cache[e.token_bytes] = tree_depth(ranks, e.token_bytes)
+        return depth_cache[e.token_bytes]
+
+    # Sort
+    reverse = sort_dir == "desc"
+    if sort_by == "rank":
+        roots.sort(key=lambda e: e.rank, reverse=reverse)
+    elif sort_by == "byte_length":
+        roots.sort(key=lambda e: len(e.token_bytes), reverse=reverse)
+    elif sort_by == "depth":
+        roots.sort(key=lambda e: get_depth(e), reverse=reverse)
+
+    total = len(roots)
+    start = (page - 1) * page_size
+    page_roots = roots[start : start + page_size]
+
+    # Build full subtrees for each root on this page
+    tree_infos: list[MergeForestTreeInfo] = []
+    for e in page_roots:
+        subtree_dict = get_subtree(ranks, e.token_bytes)
+        depth, node_count = _count_tree(subtree_dict)
+        tree_infos.append(MergeForestTreeInfo(
+            root=_dict_to_schema(subtree_dict),
+            depth=depth,
+            node_count=node_count,
+            byte_length=len(e.token_bytes),
+        ))
+
+    total_leaves = sum(1 for e in entries if e.is_leaf)
+    total_merges = sum(1 for e in entries if not e.is_leaf)
+    total_roots_count = sum(1 for e in entries if e.is_root and not e.is_leaf)
+
+    return MergeForestTreesResponse(
+        trees=tree_infos,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_leaves=total_leaves,
+        total_merges=total_merges,
+        total_roots=total_roots_count,
     )
 
 

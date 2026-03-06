@@ -265,3 +265,20 @@ class MergeForestSubtreeResponse(BaseModel):
     root: MergeForestSubtreeNode
     depth: int
     node_count: int
+
+
+class MergeForestTreeInfo(BaseModel):
+    root: MergeForestSubtreeNode
+    depth: int
+    node_count: int
+    byte_length: int
+
+
+class MergeForestTreesResponse(BaseModel):
+    trees: list[MergeForestTreeInfo]
+    total: int
+    page: int
+    page_size: int
+    total_leaves: int
+    total_merges: int
+    total_roots: int

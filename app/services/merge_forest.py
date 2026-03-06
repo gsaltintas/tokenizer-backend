@@ -46,18 +46,7 @@ def build_merge_entries(ranks: dict[bytes, int]) -> list[MergeEntry]:
             ))
             continue
 
-        # Find optimal split
-        best_split: tuple[bytes, bytes] | None = None
-        best_max_rank = float("inf")
-
-        for i in range(1, len(token_bytes)):
-            left = token_bytes[:i]
-            right = token_bytes[i:]
-            if left in ranks and right in ranks:
-                max_rank = max(ranks[left], ranks[right])
-                if max_rank < best_max_rank:
-                    best_max_rank = max_rank
-                    best_split = (left, right)
+        best_split = _find_split(ranks, token_bytes)
 
         if best_split is not None:
             left_b, right_b = best_split
@@ -87,6 +76,21 @@ def build_merge_entries(ranks: dict[bytes, int]) -> list[MergeEntry]:
     return entries
 
 
+def _find_split(ranks: dict[bytes, int], token_bytes: bytes) -> tuple[bytes, bytes] | None:
+    """Find the optimal BPE split for a multi-byte token."""
+    best_split: tuple[bytes, bytes] | None = None
+    best_max_rank = float("inf")
+    for i in range(1, len(token_bytes)):
+        left = token_bytes[:i]
+        right = token_bytes[i:]
+        if left in ranks and right in ranks:
+            max_rank = max(ranks[left], ranks[right])
+            if max_rank < best_max_rank:
+                best_max_rank = max_rank
+                best_split = (left, right)
+    return best_split
+
+
 def get_subtree(ranks: dict[bytes, int], token_bytes: bytes) -> dict:
     """Recursively decompose a token into its full merge tree."""
     rank = ranks.get(token_bytes, -1)
@@ -101,20 +105,8 @@ def get_subtree(ranks: dict[bytes, int], token_bytes: bytes) -> dict:
             "is_leaf": True,
         }
 
-    # Find optimal split (same logic as build_merge_entries)
-    best_split: tuple[bytes, bytes] | None = None
-    best_max_rank = float("inf")
-
-    for i in range(1, len(token_bytes)):
-        left = token_bytes[:i]
-        right = token_bytes[i:]
-        if left in ranks and right in ranks:
-            max_rank = max(ranks[left], ranks[right])
-            if max_rank < best_max_rank:
-                best_max_rank = max_rank
-                best_split = (left, right)
-
-    if best_split is None:
+    split = _find_split(ranks, token_bytes)
+    if split is None:
         return {
             "token": token_str,
             "token_hex": token_hex,
@@ -127,9 +119,29 @@ def get_subtree(ranks: dict[bytes, int], token_bytes: bytes) -> dict:
         "token_hex": token_hex,
         "rank": rank,
         "is_leaf": False,
-        "left": get_subtree(ranks, best_split[0]),
-        "right": get_subtree(ranks, best_split[1]),
+        "left": get_subtree(ranks, split[0]),
+        "right": get_subtree(ranks, split[1]),
     }
+
+
+def tree_depth(ranks: dict[bytes, int], token_bytes: bytes) -> int:
+    """Compute the depth of a token's merge tree."""
+    if len(token_bytes) <= 1:
+        return 1
+    split = _find_split(ranks, token_bytes)
+    if split is None:
+        return 1
+    return 1 + max(tree_depth(ranks, split[0]), tree_depth(ranks, split[1]))
+
+
+def tree_node_count(ranks: dict[bytes, int], token_bytes: bytes) -> int:
+    """Count all nodes in a token's merge tree."""
+    if len(token_bytes) <= 1:
+        return 1
+    split = _find_split(ranks, token_bytes)
+    if split is None:
+        return 1
+    return 1 + tree_node_count(ranks, split[0]) + tree_node_count(ranks, split[1])
 
 
 # Module-level cache: tokenizer_id -> list[MergeEntry]
