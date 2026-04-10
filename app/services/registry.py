@@ -75,6 +75,11 @@ class TokenizerRegistry:
                 f"HuggingFace error: {e}"
             )
 
+    def reload(self, name: str) -> TokenizerAdapter:
+        """Evict a tokenizer from cache and reload it fresh."""
+        self._cache.pop(name, None)
+        return self.load(name)
+
     def get(self, name: str) -> TokenizerAdapter | None:
         """Get a cached tokenizer, or None if not loaded."""
         if name in self._cache:

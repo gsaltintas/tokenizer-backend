@@ -24,6 +24,27 @@ async def list_tokenizers():
     )
 
 
+@router.post("/{name:path}/reload", response_model=LoadTokenizerResponse)
+async def reload_tokenizer(name: str):
+    """Evict a tokenizer from the cache and reload it fresh."""
+    try:
+        adapter = registry.reload(name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reload tokenizer: {e}")
+
+    return LoadTokenizerResponse(
+        tokenizer=TokenizerInfo(
+            id=name,
+            name=adapter.name,
+            tokenizer_type=adapter.tokenizer_type,
+            vocab_size=adapter.vocab_size(),
+            source=adapter.source,
+        )
+    )
+
+
 @router.post("/load", response_model=LoadTokenizerResponse)
 async def load_tokenizer(req: LoadTokenizerRequest):
     """Load a tokenizer by name, HuggingFace model ID, or file path."""
