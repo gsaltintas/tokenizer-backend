@@ -39,19 +39,24 @@ class TokenizerRegistry:
         self._cache: OrderedDict[str, TokenizerAdapter] = OrderedDict()
         self._max_cache_size = max_cache_size
 
-    def load(self, name: str) -> TokenizerAdapter:
-        """Load a tokenizer by name, HuggingFace model ID, or file path."""
-        if name in self._cache:
-            self._cache.move_to_end(name)
-            return self._cache[name]
+    @staticmethod
+    def _cache_key(name: str, subfolder: str | None) -> str:
+        return f"{name}::{subfolder}" if subfolder else name
 
-        adapter = self._create_adapter(name)
-        self._cache[name] = adapter
+    def load(self, name: str, subfolder: str | None = None) -> TokenizerAdapter:
+        """Load a tokenizer by name, HuggingFace model ID, or file path."""
+        key = self._cache_key(name, subfolder)
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+
+        adapter = self._create_adapter(name, subfolder)
+        self._cache[key] = adapter
         if len(self._cache) > self._max_cache_size:
             self._cache.popitem(last=False)
         return adapter
 
-    def _create_adapter(self, name: str) -> TokenizerAdapter:
+    def _create_adapter(self, name: str, subfolder: str | None = None) -> TokenizerAdapter:
         # 1. Check if it's a tiktoken encoding
         if name in TIKTOKEN_ENCODINGS:
             encoding_name = TIKTOKEN_ENCODINGS[name]
@@ -67,7 +72,7 @@ class TokenizerRegistry:
 
         # 4. Try as HuggingFace model ID
         try:
-            return HuggingFaceAdapter(name)
+            return HuggingFaceAdapter(name, subfolder=subfolder)
         except Exception as e:
             raise ValueError(
                 f"Could not load tokenizer '{name}'. "
@@ -75,10 +80,11 @@ class TokenizerRegistry:
                 f"HuggingFace error: {e}"
             )
 
-    def reload(self, name: str) -> TokenizerAdapter:
+    def reload(self, name: str, subfolder: str | None = None) -> TokenizerAdapter:
         """Evict a tokenizer from cache and reload it fresh."""
-        self._cache.pop(name, None)
-        return self.load(name)
+        key = self._cache_key(name, subfolder)
+        self._cache.pop(key, None)
+        return self.load(name, subfolder)
 
     def get(self, name: str) -> TokenizerAdapter | None:
         """Get a cached tokenizer, or None if not loaded."""

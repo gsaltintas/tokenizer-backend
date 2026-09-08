@@ -15,6 +15,7 @@ class TokenizerListResponse(BaseModel):
 
 class LoadTokenizerRequest(BaseModel):
     name: str = Field(..., description="Tokenizer name, HuggingFace model ID, or file path")
+    subfolder: str | None = Field(None, description="Subfolder within the HuggingFace repo")
 
 
 class LoadTokenizerResponse(BaseModel):

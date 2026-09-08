@@ -49,15 +49,16 @@ async def reload_tokenizer(name: str):
 async def load_tokenizer(req: LoadTokenizerRequest):
     """Load a tokenizer by name, HuggingFace model ID, or file path."""
     try:
-        adapter = registry.load(req.name)
+        adapter = registry.load(req.name, subfolder=req.subfolder)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load tokenizer: {e}")
 
+    tok_id = registry._cache_key(req.name, req.subfolder)
     return LoadTokenizerResponse(
         tokenizer=TokenizerInfo(
-            id=req.name,
+            id=tok_id,
             name=adapter.name,
             tokenizer_type=adapter.tokenizer_type,
             vocab_size=adapter.vocab_size(),

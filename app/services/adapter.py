@@ -165,10 +165,14 @@ class TiktokenAdapter(TokenizerAdapter):
 
 
 class HuggingFaceAdapter(TokenizerAdapter):
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, subfolder: str | None = None):
         from transformers import AutoTokenizer
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        kwargs: dict = {"trust_remote_code": True}
+        if subfolder:
+            kwargs["subfolder"] = subfolder
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name, **kwargs)
         self._model_name = model_name
+        self._subfolder = subfolder
         self._vocab: dict[str, int] | None = None
         # Determine type
         self._type = "bpe"
@@ -236,6 +240,8 @@ class HuggingFaceAdapter(TokenizerAdapter):
 
     @property
     def name(self) -> str:
+        if self._subfolder:
+            return f"{self._model_name}/{self._subfolder}"
         return self._model_name
 
     @property
