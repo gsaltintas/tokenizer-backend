@@ -12,6 +12,7 @@ dependencies = [
     "tiktoken>=0.7",
     "tokenizer-intrinsic-evals",
     "tokenizers>=0.19",
+    "tokenmonster>=1.1.12",
     "torch>=2.10.0",
     "transformers>=4.40",
     "unicodedata2>=15.1.0",

@@ -3166,6 +3166,7 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizer-intrinsic-evals" },
     { name = "tokenizers" },
+    { name = "tokenmonster" },
     { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "transformers" },
@@ -3185,6 +3186,7 @@ requires-dist = [
     { name = "tiktoken", specifier = ">=0.7" },
     { name = "tokenizer-intrinsic-evals", git = "https://github.com/cimeister/tokenizer-intrinsic-evals.git" },
     { name = "tokenizers", specifier = ">=0.19" },
+    { name = "tokenmonster", specifier = ">=1.1.12" },
     { name = "torch", specifier = ">=2.10.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "transformers", specifier = ">=4.40" },
     { name = "unicodedata2", specifier = ">=15.1.0" },
@@ -3240,6 +3242,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/db/f7/0a69ac6b82dbccf3f71add938a161c497952749294b8dd6dfe03a819dc40/tokenizers-0.23.2-cp310-abi3-win_amd64.whl", hash = "sha256:2e96f5699d5249c9c64aa8412e044f727aae3a4098cf830f9901ec1afc361cde", size = 2863236, upload-time = "2026-09-03T08:55:46.193Z" },
     { url = "https://files.pythonhosted.org/packages/d7/b0/dee84cb44175be1b4c35bd2f770727494e78f0bb38e571a623ade94dbebb/tokenizers-0.23.2-cp310-abi3-win_arm64.whl", hash = "sha256:e49c394456dd9985787fec76132438ba3fb8911f857b1bf3d40119f9292d41aa", size = 2729352, upload-time = "2026-09-03T08:55:44.345Z" },
 ]
+
+[[package]]
+name = "tokenmonster"
+version = "1.1.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/39/1371a48c712cfbfc08c7d6d5415cb6c150a5677998de0f394f7b9cd9eec5/tokenmonster-1.1.12.tar.gz", hash = "sha256:b4b12348b193ef6d765ba4b9f4de7b679ac6faa438fbc7d0b308b3be581974bb", size = 17240, upload-time = "2023-09-05T09:48:13.326Z" }
 
 [[package]]
 name = "torch"
