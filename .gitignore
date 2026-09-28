@@ -7,4 +7,5 @@ app/__pycache__/
 app/services/__pycache__/
 app/routers/__pycache__/
 app/models/__pycache__/
-
+**/*.pyc
+**.pyc

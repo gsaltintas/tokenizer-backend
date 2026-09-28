@@ -4,8 +4,14 @@ version = "0.1.0"
 description = "Tokenizer exploration and analysis tool"
 requires-python = ">=3.10"
 dependencies = [
+    "datasets>=5.0.1",
+    "protobuf>=7.36.1",
+    "tokenizer-intrinsic-evals",
     "torch>=2.10.0",
 ]
 
 [tool.ruff]
 line-length = 100
+
+[tool.uv.sources]
+tokenizer-intrinsic-evals = { git = "https://github.com/cimeister/tokenizer-intrinsic-evals.git" }
