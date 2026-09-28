@@ -15,9 +15,11 @@ from app.routers import (
     morphemes,
     multiplicity,
     pretokenize,
+    sanity_check,
     tokenize,
     tokenizers,
     undertrained,
+    visualize,
     vocabulary,
 )
 
@@ -68,6 +70,8 @@ app.include_router(merge_tree.router)
 app.include_router(merge_forest.router)
 app.include_router(pretokenize.router)
 app.include_router(intrinsic_eval.router)
+app.include_router(sanity_check.router)
+app.include_router(visualize.router)
 
 
 @app.get("/api/health")
