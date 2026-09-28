@@ -23,4 +23,12 @@ dependencies = [
 line-length = 100
 
 [tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 tokenizer-intrinsic-evals = { git = "https://github.com/cimeister/tokenizer-intrinsic-evals.git" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+

@@ -1,18 +1,20 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.routers import (
     comparison,
+    intrinsic_eval,
     language,
     merge_forest,
     merge_tree,
     morphemes,
     multiplicity,
+    pretokenize,
     tokenize,
     tokenizers,
     undertrained,
@@ -43,23 +45,16 @@ app = FastAPI(
 # MUST be BEFORE including routers
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now
+    allow_origins=[
+        "https://tokenizers.gsaltintas.com",
+        "https://tokenizer-exploration.gsaltintas78.workers.dev",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Explicit OPTIONS handler for CORS preflight
-@app.options("/{full_path:path}")
-async def options_handler(request: Request, full_path: str):
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
-        }
-    )
 
 app.include_router(tokenizers.router)
 app.include_router(tokenize.router)
@@ -71,6 +66,8 @@ app.include_router(undertrained.router)
 app.include_router(comparison.router)
 app.include_router(merge_tree.router)
 app.include_router(merge_forest.router)
+app.include_router(pretokenize.router)
+app.include_router(intrinsic_eval.router)
 
 
 @app.get("/api/health")

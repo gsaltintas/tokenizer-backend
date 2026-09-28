@@ -29,7 +29,7 @@ async def list_flores_languages():
     return {"languages": FLORES_LANGUAGES}
 
 
-@router.post("/{tokenizer_id}/per-text")
+@router.post("/{tokenizer_id:path}/per-text")
 async def per_text(tokenizer_id: str, req: PerTextRequest):
     adapter = registry.get(tokenizer_id)
     if adapter is None:
@@ -41,7 +41,7 @@ async def per_text(tokenizer_id: str, req: PerTextRequest):
     return {"tokenizer_id": tokenizer_id, "metrics": metrics}
 
 
-@router.post("/{tokenizer_id}/flores")
+@router.post("/{tokenizer_id:path}/flores")
 async def flores_eval(tokenizer_id: str, req: FloresRequest):
     adapter = registry.get(tokenizer_id)
     if adapter is None:
