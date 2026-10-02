@@ -1,4 +1,5 @@
 from app.services.adapter import TokenizerAdapter
+from app.services.tokens import build_token_infos
 
 DEFAULT_SAMPLE_TEXTS = [
     "The quick brown fox jumps over the lazy dog.",
@@ -53,19 +54,7 @@ def compare_tokenization(
     """Compare how different tokenizers tokenize the same text."""
     results = []
     for tok_id, adapter in adapters.items():
-        token_ids = adapter.encode(text)
-        tokens = []
-        for tid in token_ids:
-            token_str = adapter.decode_single(tid)
-            token_bytes = token_str.encode("utf-8", errors="replace")
-            tokens.append(
-                {
-                    "id": tid,
-                    "token_str": token_str,
-                    "token_bytes_hex": token_bytes.hex(),
-                    "byte_length": len(token_bytes),
-                }
-            )
+        tokens = [t.model_dump() for t in build_token_infos(adapter, text)]
         results.append(
             {
                 "tokenizer_id": tok_id,

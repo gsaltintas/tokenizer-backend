@@ -1,5 +1,9 @@
+import json
+import re
 from abc import ABC, abstractmethod
 from functools import lru_cache
+
+_BYTE_PIECE = re.compile(r"^<0x([0-9A-Fa-f]{2})>$")
 
 
 @lru_cache(maxsize=1)
@@ -81,6 +85,11 @@ class TokenizerAdapter(ABC):
         """Decode a single token ID to string."""
         return self.decode([token_id])
 
+    def raw_token_bytes(self, token_id: int) -> bytes | None:
+        """Exact bytes a token contributes to the text, which may be an
+        incomplete UTF-8 sequence. None if this backend can't tell."""
+        return None
+
     def encode_single_token(self, text: str) -> int | None:
         """Encode text expected to be a single token. Returns None if multi-token."""
         ids = self.encode(text)
@@ -99,6 +108,9 @@ class TiktokenAdapter(TokenizerAdapter):
 
     def decode(self, ids: list[int]) -> str:
         return self._encoding.decode(ids)
+
+    def raw_token_bytes(self, token_id: int) -> bytes | None:
+        return self._encoding.decode_single_token_bytes(token_id)
 
     def get_vocab(self) -> dict[str, int]:
         if self._vocab is None:
@@ -183,11 +195,40 @@ class HuggingFaceAdapter(TokenizerAdapter):
                 self._type = "unigram"
             elif "wordpiece" in model_type:
                 self._type = "wordpiece"
+        self._byte_level, self._metaspace = self._detect_decoder()
+
+    def _detect_decoder(self) -> tuple[bool, bool]:
+        """Whether pieces use GPT-2 byte-level chars and/or SentencePiece ▁."""
+        try:
+            decoder = json.loads(self._tokenizer.backend_tokenizer.to_str()).get("decoder")
+        except Exception:
+            return False, False
+        spec = json.dumps(decoder, ensure_ascii=False)
+        return '"ByteLevel"' in spec, '"Metaspace"' in spec or "\u2581" in spec
+
     def encode(self, text: str) -> list[int]:
         return self._tokenizer.encode(text, add_special_tokens=False)
 
     def decode(self, ids: list[int]) -> str:
         return self._tokenizer.decode(ids)
+
+    def raw_token_bytes(self, token_id: int) -> bytes | None:
+        piece = self._tokenizer.convert_ids_to_tokens(token_id)
+        if piece is None:
+            return None
+        if token_id in self._tokenizer.added_tokens_decoder:
+            return piece.encode("utf-8")
+        if self._byte_level:
+            unicode_to_byte = _gpt2_unicode_to_bytes()
+            if all(ch in unicode_to_byte for ch in piece):
+                return bytes(unicode_to_byte[ch] for ch in piece)
+            return None
+        if self._metaspace:
+            m = _BYTE_PIECE.match(piece)
+            if m:
+                return bytes([int(m.group(1), 16)])
+            return piece.replace("▁", " ").encode("utf-8")
+        return None
 
     def get_vocab(self) -> dict[str, int]:
         if self._vocab is None:
@@ -281,6 +322,12 @@ class SentencePieceAdapter(TokenizerAdapter):
 
     def decode(self, ids: list[int]) -> str:
         return self._sp.Decode(ids)
+
+    def raw_token_bytes(self, token_id: int) -> bytes | None:
+        piece = self._sp.IdToPiece(token_id)
+        if self._sp.IsByte(token_id):
+            return bytes([int(_BYTE_PIECE.match(piece).group(1), 16)])
+        return piece.replace("▁", " ").encode("utf-8")
 
     def get_vocab(self) -> dict[str, int]:
         if self._vocab is None:

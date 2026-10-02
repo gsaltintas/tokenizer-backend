@@ -29,6 +29,11 @@ class TokenInfo(BaseModel):
     byte_length: int
     start: int | None = None
     end: int | None = None
+    # Set when a character's UTF-8 bytes are split across tokens: every token
+    # in the split shares group_id, and group_str is what they decode to.
+    is_partial: bool = False
+    group_id: int | None = None
+    group_str: str | None = None
 
 
 class TokenizeRequest(BaseModel):

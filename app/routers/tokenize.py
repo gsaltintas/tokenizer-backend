@@ -4,39 +4,9 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from app.models.schemas import TokenInfo, TokenizeRequest, TokenizeResponse
 from app.services.registry import registry
+from app.services.tokens import build_token_infos
 
 router = APIRouter(prefix="/api/tokenize", tags=["tokenize"])
-
-
-def _build_tokens(adapter, text: str) -> list[TokenInfo]:
-    token_ids = adapter.encode(text)
-    tokens: list[TokenInfo] = []
-    offset = 0
-    prev_decoded = ""
-    for i, tid in enumerate(token_ids):
-        # Use incremental decoding to preserve context (e.g. SentencePiece ▁ → space).
-        # Decode prefix token_ids[:i+1] and diff against previous prefix.
-        curr_decoded = adapter.decode(token_ids[: i + 1])
-        token_str = curr_decoded[len(prev_decoded):]
-        prev_decoded = curr_decoded
-
-        token_bytes = token_str.encode("utf-8", errors="replace")
-        start = text.find(token_str, offset)
-        if start == -1:
-            start = offset
-        end = start + len(token_str)
-        offset = end
-        tokens.append(
-            TokenInfo(
-                id=tid,
-                token_str=token_str,
-                token_bytes_hex=token_bytes.hex(),
-                byte_length=len(token_bytes),
-                start=start,
-                end=end,
-            )
-        )
-    return tokens
 
 
 @router.post("", response_model=TokenizeResponse)
@@ -46,7 +16,7 @@ async def tokenize_text(req: TokenizeRequest):
     if adapter is None:
         raise HTTPException(status_code=404, detail=f"Tokenizer '{req.tokenizer_id}' not loaded")
 
-    tokens = _build_tokens(adapter, req.text)
+    tokens = build_token_infos(adapter, req.text)
     return TokenizeResponse(
         tokens=tokens,
         token_count=len(tokens),
@@ -73,7 +43,7 @@ async def tokenize_ws(websocket: WebSocket):
                     )
                     continue
 
-                tokens = _build_tokens(adapter, text)
+                tokens = build_token_infos(adapter, text)
                 response = TokenizeResponse(
                     tokens=tokens,
                     token_count=len(tokens),
