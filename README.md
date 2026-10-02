@@ -34,7 +34,9 @@ Interactive API docs are then at <http://localhost:8000/docs>.
 srun --jobid=<id> --overlap ./serve.sh
 ```
 
-It puts the Hugging Face cache on node-local disk (`/localscratch` if present, otherwise `/tmp`). If `~/.cloudflared-token` exists, it also starts a Cloudflare tunnel, passing the token through the environment rather than argv.
+It puts the Hugging Face cache on node-local disk (`/localscratch` if present, otherwise `/tmp`). If `~/.cloudflared-token` exists, it also starts a Cloudflare tunnel, passing the token through the environment rather than argv. It restarts the backend if it exits or fails `/api/health`, and only connects the tunnel once the backend is healthy.
+
+For continuous uptime, run `./ensure_serving.sh`. It submits `serve.sbatch`, a 5-day job that queues its successor on another node to start 12 h before its own time limit. Once the successor is healthy, it cancels the old job, and the tunnel fails over without a gap. `ensure_serving.sh` is idempotent: it submits a job if none is queued and releases a held successor early if nothing is running. Run it from cron as a watchdog (see the header of the script). To stop: `touch STOP_SERVING && scancel -n tokenizer-serve`.
 
 ### Serving the frontend
 
@@ -109,7 +111,9 @@ app/
                         (tiktoken is converted to an equivalent tokenizers.Tokenizer)
   models/
     schemas.py   Pydantic request/response models
-serve.sh         Cluster launch script (HF cache + optional Cloudflare tunnel)
+serve.sh         Cluster launch script (HF cache + optional Cloudflare tunnel, supervised)
+serve.sbatch     Self-renewing Slurm job around serve.sh
+ensure_serving.sh  Idempotent start/watchdog for the serve.sbatch chain
 ```
 
 To support a new tokenizer library, subclass `TokenizerAdapter` in `adapter.py` and add a resolution rule in `TokenizerRegistry._create_adapter`.
