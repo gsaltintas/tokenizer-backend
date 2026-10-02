@@ -78,10 +78,7 @@ def compute_multiplicity_groups(
     return result
 
 
-def search_multiplicity_groups(
-    adapter: TokenizerAdapter, query: str
-) -> list[dict]:
-    """Search for multiplicity groups matching a query."""
-    all_groups = compute_multiplicity_groups(adapter)
+def search_multiplicity_groups(all_groups: list[dict], query: str) -> list[dict]:
+    """Search groups from compute_multiplicity_groups for a query."""
     query_lower = query.lower().strip()
     return [g for g in all_groups if query_lower in g["base_form"]]

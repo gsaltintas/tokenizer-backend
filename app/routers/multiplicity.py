@@ -2,21 +2,17 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import MultiplicityGroup, MultiplicityResponse, VariantInfo
 from app.services.multiplicity import compute_multiplicity_groups, search_multiplicity_groups
+from app.services.cache import memo
 from app.services.registry import registry
 
 router = APIRouter(prefix="/api/multiplicity", tags=["multiplicity"])
 
-# Cache multiplicity results per tokenizer
-_multiplicity_cache: dict[str, list[dict]] = {}
-
 
 def _get_groups(tok_id: str) -> list[dict]:
-    if tok_id not in _multiplicity_cache:
-        adapter = registry.get(tok_id)
-        if adapter is None:
-            raise HTTPException(status_code=404, detail=f"Tokenizer '{tok_id}' not loaded")
-        _multiplicity_cache[tok_id] = compute_multiplicity_groups(adapter)
-    return _multiplicity_cache[tok_id]
+    adapter = registry.get(tok_id)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail=f"Tokenizer '{tok_id}' not loaded")
+    return memo(adapter, "multiplicity", lambda: compute_multiplicity_groups(adapter))
 
 
 
@@ -25,11 +21,7 @@ async def search_multiplicity(
     tok_id: str,
     query: str = Query("", min_length=1),
 ):
-    adapter = registry.get(tok_id)
-    if adapter is None:
-        raise HTTPException(status_code=404, detail=f"Tokenizer '{tok_id}' not loaded")
-
-    results = search_multiplicity_groups(adapter, query)
+    results = search_multiplicity_groups(_get_groups(tok_id), query)
 
     return MultiplicityResponse(
         groups=[

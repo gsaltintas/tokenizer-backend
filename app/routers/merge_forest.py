@@ -8,7 +8,8 @@ from app.models.schemas import (
     MergeForestTreeInfo,
     MergeForestTreesResponse,
 )
-from app.services.merge_forest import get_cached_entries, get_subtree, tree_depth, tree_node_count
+from app.services.cache import memo
+from app.services.merge_forest import get_cached_depths, get_cached_entries, get_subtree
 from app.services.registry import registry
 
 router = APIRouter(prefix="/api/merge-forest", tags=["merge-forest"])
@@ -37,10 +38,22 @@ def _get_adapter_and_ranks(tok_id: str):
     adapter = registry.get(tok_id)
     if adapter is None:
         raise HTTPException(404, f"Tokenizer '{tok_id}' not loaded")
-    ranks = adapter.get_merge_ranks()
+    ranks = memo(adapter, "merge_ranks", adapter.get_merge_ranks)
     if ranks is None:
         raise HTTPException(400, "Tokenizer does not support BPE merge forest visualization")
     return adapter, ranks
+
+
+def _forest_counts(adapter, entries) -> tuple[int, int, int, int]:
+    """(leaves, merges, roots, non-leaf roots) over all entries."""
+
+    def count() -> tuple[int, int, int, int]:
+        leaves = sum(1 for e in entries if e.is_leaf)
+        roots = sum(1 for e in entries if e.is_root)
+        leaf_roots = sum(1 for e in entries if e.is_root and e.is_leaf)
+        return leaves, len(entries) - leaves, roots, roots - leaf_roots
+
+    return memo(adapter, "merge_forest_counts", count)
 
 
 def _count_tree(node: dict) -> tuple[int, int]:
@@ -69,15 +82,10 @@ async def get_merge_forest_subtree(
     rank: int,
     tok_id: str = Query(..., description="Tokenizer ID"),
 ):
-    _, ranks = _get_adapter_and_ranks(tok_id)
+    adapter, ranks = _get_adapter_and_ranks(tok_id)
 
-    # Find the token with the given rank
-    target_bytes: bytes | None = None
-    for token_bytes, r in ranks.items():
-        if r == rank:
-            target_bytes = token_bytes
-            break
-
+    by_rank = memo(adapter, "merge_ranks_inverse", lambda: {r: b for b, r in reversed(ranks.items())})
+    target_bytes = by_rank.get(rank)
     if target_bytes is None:
         raise HTTPException(404, f"No token found with rank {rank}")
 
@@ -101,8 +109,8 @@ async def get_merge_forest_trees(
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """Return paginated root trees (connected components) with full subtrees."""
-    _, ranks = _get_adapter_and_ranks(tok_id)
-    entries = get_cached_entries(tok_id, ranks)
+    adapter, ranks = _get_adapter_and_ranks(tok_id)
+    entries = get_cached_entries(adapter, ranks)
 
     # Only root non-leaf entries are connected component roots
     roots = [e for e in entries if e.is_root and not e.is_leaf]
@@ -115,14 +123,6 @@ async def get_merge_forest_trees(
             if search_lower in e.token_str().lower() or search_lower in e.token_hex()
         ]
 
-    # Compute depth for sorting (cached per call)
-    depth_cache: dict[bytes, int] = {}
-
-    def get_depth(e) -> int:
-        if e.token_bytes not in depth_cache:
-            depth_cache[e.token_bytes] = tree_depth(ranks, e.token_bytes)
-        return depth_cache[e.token_bytes]
-
     # Sort
     reverse = sort_dir == "desc"
     if sort_by == "rank":
@@ -130,7 +130,8 @@ async def get_merge_forest_trees(
     elif sort_by == "byte_length":
         roots.sort(key=lambda e: len(e.token_bytes), reverse=reverse)
     elif sort_by == "depth":
-        roots.sort(key=lambda e: get_depth(e), reverse=reverse)
+        depths = get_cached_depths(adapter, ranks)
+        roots.sort(key=lambda e: depths[e.token_bytes], reverse=reverse)
 
     total = len(roots)
     start = (page - 1) * page_size
@@ -148,9 +149,7 @@ async def get_merge_forest_trees(
             byte_length=len(e.token_bytes),
         ))
 
-    total_leaves = sum(1 for e in entries if e.is_leaf)
-    total_merges = sum(1 for e in entries if not e.is_leaf)
-    total_roots_count = sum(1 for e in entries if e.is_root and not e.is_leaf)
+    total_leaves, total_merges, _, total_roots_count = _forest_counts(adapter, entries)
 
     return MergeForestTreesResponse(
         trees=tree_infos,
@@ -173,8 +172,8 @@ async def get_merge_forest(
     sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
     filter: str = Query("all", pattern="^(all|leaves|merges|roots)$"),
 ):
-    _, ranks = _get_adapter_and_ranks(tok_id)
-    entries = get_cached_entries(tok_id, ranks)
+    adapter, ranks = _get_adapter_and_ranks(tok_id)
+    entries = get_cached_entries(adapter, ranks)
 
     # Filter
     if filter == "leaves":
@@ -184,7 +183,7 @@ async def get_merge_forest(
     elif filter == "roots":
         filtered = [e for e in entries if e.is_root]
     else:
-        filtered = entries
+        filtered = list(entries)  # sorted below; don't reorder the cache
 
     # Search
     if search:
@@ -207,9 +206,7 @@ async def get_merge_forest(
     start = (page - 1) * page_size
     page_entries = filtered[start : start + page_size]
 
-    total_leaves = sum(1 for e in entries if e.is_leaf)
-    total_merges = sum(1 for e in entries if not e.is_leaf)
-    total_roots = sum(1 for e in entries if e.is_root)
+    total_leaves, total_merges, total_roots, _ = _forest_counts(adapter, entries)
 
     return MergeForestResponse(
         entries=[_entry_to_schema(e) for e in page_entries],

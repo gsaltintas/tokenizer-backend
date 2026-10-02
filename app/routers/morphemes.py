@@ -1,12 +1,19 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import MorphemeAnalysisResponse, MorphemeBreakdown
+from app.services.cache import memo
 from app.services.morphemes import compute_morpheme_analysis
 from app.services.registry import registry
 
 router = APIRouter(prefix="/api/morphemes", tags=["morphemes"])
 
-_morpheme_cache: dict[str, list[dict]] = {}
+
+def _type_distribution(results: list[dict]) -> dict[str, int]:
+    type_dist: dict[str, int] = {}
+    for r in results:
+        t = r["morpheme_type"]
+        type_dist[t] = type_dist.get(t, 0) + 1
+    return type_dist
 
 
 @router.get("/{tok_id:path}", response_model=MorphemeAnalysisResponse)
@@ -16,19 +23,11 @@ async def get_morphemes(
     page_size: int = Query(100, ge=1, le=1000),
     type_filter: str = Query(""),
 ):
-    if tok_id not in _morpheme_cache:
-        adapter = registry.get(tok_id)
-        if adapter is None:
-            raise HTTPException(status_code=404, detail=f"Tokenizer '{tok_id}' not loaded")
-        _morpheme_cache[tok_id] = compute_morpheme_analysis(adapter)
-
-    all_results = _morpheme_cache[tok_id]
-
-    # Compute type distribution from full results
-    type_dist: dict[str, int] = {}
-    for r in all_results:
-        t = r["morpheme_type"]
-        type_dist[t] = type_dist.get(t, 0) + 1
+    adapter = registry.get(tok_id)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail=f"Tokenizer '{tok_id}' not loaded")
+    all_results = memo(adapter, "morphemes", lambda: compute_morpheme_analysis(adapter))
+    type_dist = memo(adapter, "morpheme_types", lambda: _type_distribution(all_results))
 
     # Apply filter
     if type_filter:

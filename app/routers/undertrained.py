@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import UndertrainedResponse, UndertrainedToken
+from app.services.cache import memo
 from app.services.registry import registry
 from app.services.undertrained import detect_undertrained_tokens
 
 router = APIRouter(prefix="/api/undertrained", tags=["undertrained"])
-
-_undertrained_cache: dict[str, list[dict]] = {}
 
 
 @router.get("/{tok_id:path}", response_model=UndertrainedResponse)
@@ -26,10 +25,7 @@ async def get_undertrained(
             tokens=[], total=0, page=1, page_size=page_size, bpe_available=False
         )
 
-    if tok_id not in _undertrained_cache:
-        _undertrained_cache[tok_id] = detect_undertrained_tokens(adapter)
-
-    all_tokens = _undertrained_cache[tok_id]
+    all_tokens = memo(adapter, "undertrained", lambda: detect_undertrained_tokens(adapter))
     total = len(all_tokens)
     start = (page - 1) * page_size
     end = start + page_size

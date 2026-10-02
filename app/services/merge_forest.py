@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.services.cache import memo
+
 
 @dataclass
 class MergeEntry:
@@ -144,12 +146,31 @@ def tree_node_count(ranks: dict[bytes, int], token_bytes: bytes) -> int:
     return 1 + tree_node_count(ranks, split[0]) + tree_node_count(ranks, split[1])
 
 
-# Module-level cache: tokenizer_id -> list[MergeEntry]
-_forest_cache: dict[str, list[MergeEntry]] = {}
-
-
-def get_cached_entries(tok_id: str, ranks: dict[bytes, int]) -> list[MergeEntry]:
+def get_cached_entries(adapter: object, ranks: dict[bytes, int]) -> list[MergeEntry]:
     """Get or build cached merge entries for a tokenizer."""
-    if tok_id not in _forest_cache:
-        _forest_cache[tok_id] = build_merge_entries(ranks)
-    return _forest_cache[tok_id]
+    return memo(adapter, "merge_forest", lambda: build_merge_entries(ranks))
+
+
+def get_cached_depths(adapter: object, ranks: dict[bytes, int]) -> dict[bytes, int]:
+    """Merge-tree depth of every entry, computed once from the cached splits."""
+
+    def build() -> dict[bytes, int]:
+        by_bytes = {e.token_bytes: e for e in get_cached_entries(adapter, ranks)}
+        depths: dict[bytes, int] = {}
+
+        def depth(b: bytes) -> int:
+            d = depths.get(b)
+            if d is None:
+                e = by_bytes.get(b)
+                if e is None or e.is_leaf:
+                    d = 1
+                else:
+                    d = 1 + max(depth(e.left_bytes), depth(e.right_bytes))
+                depths[b] = d
+            return d
+
+        for b in by_bytes:
+            depth(b)
+        return depths
+
+    return memo(adapter, "merge_forest_depths", build)
