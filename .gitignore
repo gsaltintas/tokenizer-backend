@@ -8,5 +8,6 @@ app/services/__pycache__/
 app/routers/__pycache__/
 app/models/__pycache__/
 **/*.pyc
-**.pyclogs/
+**.pyc
+logs/
 STOP_SERVING
