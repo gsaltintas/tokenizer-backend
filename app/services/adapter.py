@@ -388,12 +388,19 @@ class ScriptTokAdapter(TokenizerAdapter):
     `decode_atomic` serve the same purpose for both.
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, name: str | None = None):
         from script_bpe.pretokenize.pretokenizer import UTF8Pretokenizer
         from script_bpe.tokenizers import BPETokenizer, load_tokenizer
 
-        self._tok = load_tokenizer(path)
+        try:
+            self._tok = load_tokenizer(path)
+        except KeyError as e:
+            # e.g. the boundary-marker pretokenizers, which live in script_tok's paper_utils
+            raise ValueError(
+                f"{path} uses {e}, which the installed script_bpe package doesn't define"
+            ) from e
         self._path = path
+        self._name = name
         self._pretokenizer = self._tok.pretokenizer
         self.byte_level = isinstance(self._pretokenizer, UTF8Pretokenizer)
         self._is_bpe = isinstance(self._tok, BPETokenizer)
@@ -458,7 +465,7 @@ class ScriptTokAdapter(TokenizerAdapter):
 
     @property
     def name(self) -> str:
-        return os.path.basename(self._path).removesuffix(".gz").removesuffix(".json")
+        return self._name or os.path.basename(self._path).removesuffix(".gz").removesuffix(".json")
 
     @property
     def tokenizer_type(self) -> str:

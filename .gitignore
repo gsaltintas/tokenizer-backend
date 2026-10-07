@@ -11,4 +11,3 @@ app/models/__pycache__/
 **.pyc
 logs/
 STOP_SERVING
-models/

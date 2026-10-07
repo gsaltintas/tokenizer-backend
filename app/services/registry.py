@@ -1,6 +1,5 @@
 import os
 from collections import OrderedDict
-from pathlib import Path
 
 from app.services.adapter import (
     HuggingFaceAdapter,
@@ -21,23 +20,43 @@ TOKENMONSTER_VOCABS = {
     "fiction-24000-consistent-v1",
 }
 
-# Tokenizers trained with script_tok (https://github.com/sanderland/script_tok): drop the
-# saved .json.gz files here and they are listed as "script_tok/<file name>".
-SCRIPT_TOK_DIR = Path(
-    os.environ.get("SCRIPT_TOK_DIR", Path(__file__).resolve().parents[2] / "models" / "script_tok")
-)
-SCRIPT_TOK_PREFIX = "script_tok/"
+# Tokenizers trained with script_tok (https://github.com/sanderland/script_tok) are loaded as
+# "script_tok:<hub repo>[/<file in repo>]". They are not bundled: the saved .json.gz is
+# downloaded from the Hugging Face Hub into HF_HUB_CACHE, which serve.sh puts on the node's
+# scratch disk, like every other Hub tokenizer. A local .json/.json.gz path also works.
+SCRIPT_TOK_PREFIX = "script_tok:"
 SCRIPT_TOK_SUFFIXES = (".json.gz", ".json")
+# From "Explicit Boundary Markers for Subword Vocabularies" (arXiv 2608.08847). Only the
+# plain ones: the bnd_* tokenizers need pretokenizer classes from script_tok's paper_utils,
+# which isn't part of the installed package.
+SCRIPT_TOK_PRESETS = [
+    f"{SCRIPT_TOK_PREFIX}cmeister/boundary-markers-{lang}-d12-plain-{model}"
+    for lang in ("en", "ko", "ru")
+    for model in ("bpe", "mingram")
+]
 
 
-def script_tok_presets() -> dict[str, Path]:
-    if not SCRIPT_TOK_DIR.is_dir():
-        return {}
-    return {
-        SCRIPT_TOK_PREFIX + p.name.removesuffix(".gz").removesuffix(".json"): p
-        for p in sorted(SCRIPT_TOK_DIR.iterdir())
-        if p.name.endswith(SCRIPT_TOK_SUFFIXES)
-    }
+def download_script_tok(spec: str) -> str:
+    """Download "<repo>" or "<repo>/<file>" from the Hub; returns the local path. With only
+    a repo, it must hold exactly one .json/.json.gz file under tokenizer/."""
+    from huggingface_hub import hf_hub_download, list_repo_files
+
+    owner, repo, *rest = spec.split("/", 2)
+    repo_id = f"{owner}/{repo}"
+    if rest:
+        filename = rest[0]
+    else:
+        candidates = [
+            f for f in list_repo_files(repo_id)
+            if f.startswith("tokenizer/") and f.endswith(SCRIPT_TOK_SUFFIXES)
+        ]
+        if len(candidates) != 1:
+            raise ValueError(
+                f"Expected one script_tok tokenizer under tokenizer/ in {repo_id}, "
+                f"found {candidates}; name the file as {SCRIPT_TOK_PREFIX}{repo_id}/<file>"
+            )
+        filename = candidates[0]
+    return hf_hub_download(repo_id, filename)
 
 
 # Known tiktoken encoding names
@@ -91,10 +110,11 @@ class TokenizerRegistry:
         if name.endswith(".vocab") or name in TOKENMONSTER_VOCABS:
             return TokenMonsterAdapter(name)
 
-        # 4. Check if it's a script_tok tokenizer (preset name or saved .json/.json.gz path)
-        presets = script_tok_presets()
-        if name in presets:
-            return ScriptTokAdapter(str(presets[name]))
+        # 4. Check if it's a script_tok tokenizer (on the Hub, or a saved .json/.json.gz path)
+        if name.startswith(SCRIPT_TOK_PREFIX):
+            return ScriptTokAdapter(
+                download_script_tok(name.removeprefix(SCRIPT_TOK_PREFIX)), name=name
+            )
         if name.endswith(SCRIPT_TOK_SUFFIXES) and os.path.exists(name):
             return ScriptTokAdapter(name)
 
@@ -167,11 +187,11 @@ class TokenizerRegistry:
                 "vocab_size": 0,
                 "source": "tokenmonster",
             })
-        for st_name in script_tok_presets():
+        for st_name in SCRIPT_TOK_PRESETS:
             presets.append({
                 "id": st_name,
                 "name": st_name,
-                "tokenizer_type": "unknown",  # bpe, unigram, ...; read on load
+                "tokenizer_type": st_name.rsplit("-", 1)[1],
                 "vocab_size": 0,
                 "source": "script_tok",
             })
