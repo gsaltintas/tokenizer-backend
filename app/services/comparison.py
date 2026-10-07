@@ -173,6 +173,7 @@ def compare_pretokenization(adapters: dict[str, TokenizerAdapter], text: str) ->
                     {"text": c, "start": s, "end": e} for c, (s, e) in zip(chunk_texts, chunk_spans)
                 ],
                 "tokens": tokens,
+                "token_spans": token_spans,
                 "chunk_boundaries": sorted(chunk_bounds),
                 "token_boundaries": sorted(token_bounds),
                 "offsets_approximate": approximate,

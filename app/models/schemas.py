@@ -188,6 +188,9 @@ class TokenizerPretokenization(BaseModel):
     regex_pattern: str | None
     chunks: list[PretokenChunk]
     tokens: list[TokenInfo]
+    # (start, end) of each token in the input; exact for Hugging Face tokenizers even
+    # when normalization rewrites the text, unlike the search-based offsets in `tokens`
+    token_spans: list[tuple[int, int]]
     # Interior offsets into the input text where a chunk / token starts or ends
     chunk_boundaries: list[int]
     token_boundaries: list[int]
