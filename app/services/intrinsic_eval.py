@@ -22,7 +22,7 @@ FLORES_LANGUAGES: list[dict] = [
     {"code": "cmn_Hans", "name": "Chinese (Simplified)", "script": "Han"},
     {"code": "jpn_Jpan", "name": "Japanese", "script": "Japanese"},
     {"code": "kor_Hang", "name": "Korean", "script": "Hangul"},
-    {"code": "ara_Arab", "name": "Arabic", "script": "Arabic"},
+    {"code": "arb_Arab", "name": "Arabic", "script": "Arabic"},
     {"code": "pes_Arab", "name": "Farsi", "script": "Arabic"},
     {"code": "hin_Deva", "name": "Hindi", "script": "Devanagari"},
     {"code": "rus_Cyrl", "name": "Russian", "script": "Cyrillic"},
