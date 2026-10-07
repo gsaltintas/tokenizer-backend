@@ -1,6 +1,6 @@
 #!/bin/bash
 # Make sure a tokenizer-serve job is running; idempotent, so safe to run from cron:
-#   */15 * * * * /h/371/gsaltintas/tokenizer-exploration/tokenizer-backend/ensure_serving.sh >> /h/371/gsaltintas/tokenizer-exploration/tokenizer-backend/logs/ensure.log 2>&1
+#   */15 * * * * /h/371/gsaltintas/tokenizer-exploration/tokenizer-backend-serve/ensure_serving.sh >> /h/371/gsaltintas/tokenizer-exploration/tokenizer-backend-serve/logs/ensure.log 2>&1
 # - nothing queued         -> submit serve.sbatch
 # - only a held successor  -> release it now (the running job died unexpectedly)
 # Does nothing while STOP_SERVING exists.

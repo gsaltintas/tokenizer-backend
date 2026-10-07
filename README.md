@@ -38,6 +38,22 @@ It puts the Hugging Face cache on node-local disk (`/localscratch` if present, o
 
 For continuous uptime, run `./ensure_serving.sh`. It submits `serve.sbatch`, a 5-day job that queues its successor on another node to start 12 h before its own time limit. Once the successor is healthy, it cancels the old job, and the tunnel fails over without a gap. `ensure_serving.sh` is idempotent: it submits a job if none is queued and releases a held successor early if nothing is running. Run it from cron as a watchdog (see the header of the script). To stop: `touch STOP_SERVING && scancel -n tokenizer-serve`.
 
+### Working vs. serving branch
+
+The live server does not run from this checkout. Development happens on `main` (and feature branches) here; the server runs from a separate worktree with the `serve` branch checked out:
+
+```bash
+git worktree add ../tokenizer-backend-serve serve   # once
+```
+
+Its `logs/`, `STOP_SERVING` and `.venv` are its own, so editing, switching branches or re-syncing here never touches the running server. To ship `main` (or any ref), run `deploy.sh` from the serving worktree:
+
+```bash
+bash -ic '../tokenizer-backend-serve/deploy.sh [ref]'
+```
+
+It fast-forwards `serve` to the ref, syncs the venv, and submits a fresh `serve.sbatch` that takes over from the running job without a gap. Run `ensure_serving.sh` from the serving worktree too.
+
 ### Serving the frontend
 
 If a `static/` directory exists next to `app/` (the frontend's `dist/` build output), the app serves it at `/` with an SPA fallback, so one process can host both.
@@ -114,6 +130,7 @@ app/
 serve.sh         Cluster launch script (HF cache + optional Cloudflare tunnel, supervised)
 serve.sbatch     Self-renewing Slurm job around serve.sh
 ensure_serving.sh  Idempotent start/watchdog for the serve.sbatch chain
+deploy.sh        Ship a ref to the serving worktree and hand over to a fresh job
 ```
 
 To support a new tokenizer library, subclass `TokenizerAdapter` in `adapter.py` and add a resolution rule in `TokenizerRegistry._create_adapter`.
