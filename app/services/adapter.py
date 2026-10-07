@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from abc import ABC, abstractmethod
 from functools import lru_cache
@@ -375,6 +376,105 @@ class SentencePieceAdapter(TokenizerAdapter):
     @property
     def source(self) -> str:
         return "sentencepiece"
+
+
+class ScriptTokAdapter(TokenizerAdapter):
+    """Tokenizers trained with script_tok (https://github.com/sanderland/script_tok).
+
+    Tokens are sequences of atomic tokens produced by the pretokenizer: UTF-8 bytes for
+    the `bytes_*` pretokenizers, or (script block, index) pairs per character for the
+    SCRIPT-encoding `scriptenc*` ones.  A SCRIPT token can hold half a character, so
+    `raw_token_bytes` only works for byte-level tokenizers; `atomic_tokens` and
+    `decode_atomic` serve the same purpose for both.
+    """
+
+    def __init__(self, path: str, name: str | None = None):
+        from script_bpe.pretokenize.pretokenizer import UTF8Pretokenizer
+        from script_bpe.tokenizers import BPETokenizer, load_tokenizer
+
+        try:
+            self._tok = load_tokenizer(path)
+        except KeyError as e:
+            # e.g. the boundary-marker pretokenizers, which live in script_tok's paper_utils
+            raise ValueError(
+                f"{path} uses {e}, which the installed script_bpe package doesn't define"
+            ) from e
+        self._path = path
+        self._name = name
+        self._pretokenizer = self._tok.pretokenizer
+        self.byte_level = isinstance(self._pretokenizer, UTF8Pretokenizer)
+        self._is_bpe = isinstance(self._tok, BPETokenizer)
+        self._vocab: dict[str, int] | None = None
+
+    def encode(self, text: str) -> list[int]:
+        return [int(i) for i in self._tok.encode(text)]
+
+    def decode(self, ids: list[int]) -> str:
+        return self._tok.decode(ids)
+
+    def atomic_tokens(self, token_id: int) -> tuple[int, ...]:
+        return tuple(int(a) for a in self._tok.tokens[token_id].atomic_tokens)
+
+    def decode_atomic(self, atomic: tuple[int, ...]) -> str | None:
+        """Text of a run of atomic tokens, or None if it doesn't form whole characters."""
+        return self._pretokenizer.try_decode_strict(list(atomic))
+
+    def atomic_repr(self, atomic: tuple[int, ...]) -> str:
+        """Readable form that also covers partial characters, e.g. '<|BLOCK_Latin_Lu_0|>'."""
+        return self._pretokenizer.tokens_repr(list(atomic))
+
+    def raw_token_bytes(self, token_id: int) -> bytes | None:
+        if not self.byte_level:
+            return None
+        to_bytes = self._pretokenizer.token_to_bytes
+        return b"".join(to_bytes[a] for a in self.atomic_tokens(token_id))
+
+    def get_vocab(self) -> dict[str, int]:
+        if self._vocab is None:
+            self._vocab = {
+                self.atomic_repr(self.atomic_tokens(tid)): tid for tid in sorted(self._tok.tokens)
+            }
+        return self._vocab
+
+    def get_merges(self) -> list[tuple[str, str]] | None:
+        if not self._is_bpe:
+            return None
+        return [
+            (
+                self.atomic_repr(self.atomic_tokens(mr.tokens_from[0])),
+                self.atomic_repr(self.atomic_tokens(mr.tokens_from[1])),
+            )
+            for mr in self._tok.merge_rules
+        ]
+
+    def get_merge_ranks(self) -> dict[bytes, int] | None:
+        # The merge-tree views replay merges over UTF-8 bytes, which only matches
+        # byte-level BPE.  Single bytes rank by value, merges after them in order.
+        if not (self._is_bpe and self.byte_level):
+            return None
+        ranks = {bytes([b]): b for b in range(256)}
+        for i, mr in enumerate(self._tok.merge_rules):
+            ranks.setdefault(self.raw_token_bytes(mr.token_to), 256 + i)
+        return ranks
+
+    def vocab_size(self) -> int:
+        return len(self._tok.tokens)
+
+    def token_to_bytes(self, token: str) -> bytes:
+        return token.encode("utf-8")
+
+    @property
+    def name(self) -> str:
+        return self._name or os.path.basename(self._path).removesuffix(".gz").removesuffix(".json")
+
+    @property
+    def tokenizer_type(self) -> str:
+        # bpe, unigram, mingram, pathpiece or convextok
+        return self._tok.VERSION.removeprefix("se").split("-")[0]
+
+    @property
+    def source(self) -> str:
+        return "script_tok"
 
 
 class TokenMonsterAdapter(TokenizerAdapter):

@@ -1,5 +1,7 @@
+from collections.abc import Callable, Sequence
+
 from app.models.schemas import TokenInfo
-from app.services.adapter import TokenizerAdapter
+from app.services.adapter import ScriptTokAdapter, TokenizerAdapter
 
 
 def build_token_infos(adapter: TokenizerAdapter, text: str) -> list[TokenInfo]:
@@ -10,12 +12,43 @@ def build_token_infos(adapter: TokenizerAdapter, text: str) -> list[TokenInfo]:
     decodes to valid text.  Consecutive tokens are grouped until their
     concatenated bytes decode cleanly; tokens in a multi-token group are
     marked partial and share the group's decoded string and character span.
+    SCRIPT-encoded script_tok tokenizers split characters the same way, into
+    a script-block token and an index token, and are grouped likewise.
     """
     token_ids = adapter.encode(text)
+    if isinstance(adapter, ScriptTokAdapter) and not adapter.byte_level:
+        atomic = [adapter.atomic_tokens(tid) for tid in token_ids]
+        return _build_grouped(
+            text,
+            token_ids,
+            atomic,
+            decode=adapter.decode_atomic,
+            show=lambda a: adapter.atomic_repr(a).encode("utf-8"),
+        )
+
     raw = [adapter.raw_token_bytes(tid) for tid in token_ids]
     if any(b is None for b in raw):
         return _build_from_decode(adapter, text, token_ids)
+    return _build_grouped(text, token_ids, raw, decode=_decode_utf8, show=lambda b: b)
 
+
+def _decode_utf8(b: bytes) -> str | None:
+    try:
+        return b.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _build_grouped(
+    text: str,
+    token_ids: list[int],
+    raw: Sequence,
+    decode: Callable,
+    show: Callable,
+) -> list[TokenInfo]:
+    """Group tokens into runs whose concatenated units (bytes, or atomic-token
+    tuples) decode to whole characters.  `decode` returns None for an
+    incomplete run; `show` gives the bytes displayed for one token."""
     tokens: list[TokenInfo] = []
     offset = 0
     group_id = 0
@@ -23,24 +56,22 @@ def build_token_infos(adapter: TokenizerAdapter, text: str) -> list[TokenInfo]:
     while i < len(token_ids):
         # Extend the group until its bytes form complete UTF-8 characters
         j = i
-        buf = b""
+        buf = raw[i][:0]
         group_str = None
         while j < len(token_ids):
             buf += raw[j]
             j += 1
-            try:
-                group_str = buf.decode("utf-8")
+            group_str = decode(buf)
+            if group_str is not None:
                 break
-            except UnicodeDecodeError:
-                pass
         if group_str is None:  # incomplete sequence at end of input
-            group_str = buf.decode("utf-8", errors="replace")
+            group_str = show(buf).decode("utf-8", errors="replace")
 
         start, end = _locate(text, group_str, offset)
         offset = end
         multi = j - i > 1
         for k in range(i, j):
-            b = raw[k]
+            b = show(raw[k])
             tokens.append(
                 TokenInfo(
                     id=token_ids[k],

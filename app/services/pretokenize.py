@@ -3,7 +3,13 @@ from __future__ import annotations
 import unicodedata
 from dataclasses import dataclass, field
 
-from app.services.adapter import HuggingFaceAdapter, SentencePieceAdapter, TiktokenAdapter, TokenizerAdapter
+from app.services.adapter import (
+    HuggingFaceAdapter,
+    ScriptTokAdapter,
+    SentencePieceAdapter,
+    TiktokenAdapter,
+    TokenizerAdapter,
+)
 
 
 @dataclass
@@ -52,6 +58,8 @@ def analyze(adapter: TokenizerAdapter, text: str) -> PretokenizeResult:
         return _analyze_hf(adapter, text)
     if isinstance(adapter, SentencePieceAdapter):
         return _analyze_sp(adapter, text)
+    if isinstance(adapter, ScriptTokAdapter):
+        return _analyze_script_tok(adapter, text)
     # fallback — show tokens as chunks, no normalization
     norm = NormalizationInfo(type="none", normalized_text=text, changed=False)
     ids = adapter.encode(text)
@@ -195,4 +203,41 @@ def _analyze_sp(adapter: SentencePieceAdapter, text: str) -> PretokenizeResult:
         pretokenizer_type="metaspace",
         pretokenizer_description="SentencePiece Metaspace: NFKC normalization + whitespace splitting with ▁ prefix marker",
         regex_pattern=None,
+    )
+
+
+def _analyze_script_tok(adapter: ScriptTokAdapter, text: str) -> PretokenizeResult:
+    pt = adapter._pretokenizer
+    config = pt.config
+    normalized = pt.normalize(text)
+    norm = NormalizationInfo(
+        type=config.normalization or "none", normalized_text=normalized, changed=normalized != text
+    )
+
+    chunks = [pt.decode(chunk) for chunk in pt.pretokenize(text)]
+    steps = []
+    if config.regex_pattern:
+        steps.append("regex split")
+    if config.digit_handling:
+        steps.append(f"digits split ({config.digit_handling})")
+    if adapter.byte_level:
+        pretokenizer_type = "utf8"
+        units = "UTF-8 bytes"
+    else:
+        pretokenizer_type = "script_encoding"
+        units = "(script block, index) pairs per character (SCRIPT encoding)"
+        if getattr(config, "script_split", False):
+            steps.append("split where the Unicode script changes")
+    if config.enforce_char_boundaries:
+        steps.append("merges respect character boundaries")
+    description = f"script_tok: {', '.join(steps) or 'no splitting'}; encoded as {units}"
+
+    return PretokenizeResult(
+        normalization=norm,
+        chunks=chunks,
+        chunk_spans=_spans_from_chunks(normalized, chunks),
+        chunk_count=len(chunks),
+        pretokenizer_type=pretokenizer_type,
+        pretokenizer_description=description,
+        regex_pattern=config.regex_pattern,
     )

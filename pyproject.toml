@@ -2,12 +2,13 @@
 name = "tokenizer-explorer"
 version = "0.1.0"
 description = "Tokenizer exploration and analysis tool"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "datasets>=5.0.1",
     "fastapi>=0.110",
     "protobuf>=7.36.1",
     "pydantic>=2.7",
+    "script-bpe",
     "sentencepiece>=0.2",
     "tiktoken>=0.7",
     "tokenizer-intrinsic-evals",
@@ -26,6 +27,7 @@ line-length = 100
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 tokenizer-intrinsic-evals = { git = "https://github.com/cimeister/tokenizer-intrinsic-evals.git" }
+script-bpe = { git = "https://github.com/sanderland/script_tok" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -33,3 +35,8 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 
+
+[tool.uv]
+# script-bpe caps huggingface-hub below 1.0, which would pin transformers to 4.x. It only uses
+# the hub (via datasets) for training corpora, not for loading tokenizers.
+override-dependencies = ["huggingface-hub>=1.0"]
