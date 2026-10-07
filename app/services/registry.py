@@ -1,8 +1,10 @@
 import os
 from collections import OrderedDict
+from pathlib import Path
 
 from app.services.adapter import (
     HuggingFaceAdapter,
+    ScriptTokAdapter,
     SentencePieceAdapter,
     TiktokenAdapter,
     TokenMonsterAdapter,
@@ -18,6 +20,25 @@ TOKENMONSTER_VOCABS = {
     "code-32000-consistent-v1",
     "fiction-24000-consistent-v1",
 }
+
+# Tokenizers trained with script_tok (https://github.com/sanderland/script_tok): drop the
+# saved .json.gz files here and they are listed as "script_tok/<file name>".
+SCRIPT_TOK_DIR = Path(
+    os.environ.get("SCRIPT_TOK_DIR", Path(__file__).resolve().parents[2] / "models" / "script_tok")
+)
+SCRIPT_TOK_PREFIX = "script_tok/"
+SCRIPT_TOK_SUFFIXES = (".json.gz", ".json")
+
+
+def script_tok_presets() -> dict[str, Path]:
+    if not SCRIPT_TOK_DIR.is_dir():
+        return {}
+    return {
+        SCRIPT_TOK_PREFIX + p.name.removesuffix(".gz").removesuffix(".json"): p
+        for p in sorted(SCRIPT_TOK_DIR.iterdir())
+        if p.name.endswith(SCRIPT_TOK_SUFFIXES)
+    }
+
 
 # Known tiktoken encoding names
 TIKTOKEN_ENCODINGS = {
@@ -70,7 +91,14 @@ class TokenizerRegistry:
         if name.endswith(".vocab") or name in TOKENMONSTER_VOCABS:
             return TokenMonsterAdapter(name)
 
-        # 4. Try as HuggingFace model ID
+        # 4. Check if it's a script_tok tokenizer (preset name or saved .json/.json.gz path)
+        presets = script_tok_presets()
+        if name in presets:
+            return ScriptTokAdapter(str(presets[name]))
+        if name.endswith(SCRIPT_TOK_SUFFIXES) and os.path.exists(name):
+            return ScriptTokAdapter(name)
+
+        # 5. Try as HuggingFace model ID
         try:
             return HuggingFaceAdapter(name, subfolder=subfolder)
         except Exception as e:
@@ -138,6 +166,14 @@ class TokenizerRegistry:
                 "tokenizer_type": "unigram",
                 "vocab_size": 0,
                 "source": "tokenmonster",
+            })
+        for st_name in script_tok_presets():
+            presets.append({
+                "id": st_name,
+                "name": st_name,
+                "tokenizer_type": "unknown",  # bpe, unigram, ...; read on load
+                "vocab_size": 0,
+                "source": "script_tok",
             })
         for alias, encoding in TIKTOKEN_ENCODINGS.items():
             if encoding not in seen_encodings:

@@ -9,7 +9,8 @@ Tokenizers are loaded by name and kept in an in-memory LRU cache (10 entries). A
 1. **tiktoken**: `gpt-4o`, `gpt-4`, `gpt-3.5-turbo`, `cl100k_base`, `o200k_base`, `p50k_base`, `r50k_base`, `gpt2`
 2. **SentencePiece**: a path to an existing `.model` file
 3. **TokenMonster**: a `.vocab` file or a preset such as `english-32000-consistent-v1` (requires `pip install tokenmonster`, which is not in the default dependencies)
-4. **Hugging Face**: any Hub model ID, e.g. `meta-llama/Llama-3.2-1B`, with an optional `subfolder`
+4. **script_tok**: a tokenizer saved by [script_tok](https://github.com/sanderland/script_tok) (BPE, Unigram, MinGram, PathPiece or ConvexTok, over UTF-8 bytes or SCRIPT encoding), as a path to its `.json`/`.json.gz` file, or as `script_tok/<name>` for a file in `models/script_tok/` (override with `SCRIPT_TOK_DIR`). Files in that directory are listed as presets. With SCRIPT encoding a character can be split into a script-block token and an index token, shown as `<|BLOCK_…|>` / `<|SCRIPT_INDEX_…|>` and grouped like split UTF-8 bytes. Merge trees need byte-level BPE, so they are only available for the `bytes_*` pretokenizers.
+5. **Hugging Face**: any Hub model ID, e.g. `meta-llama/Llama-3.2-1B`, with an optional `subfolder`
 
 Gated Hub models (Llama, Gemma, …) need a Hugging Face token in the environment (`HF_TOKEN`, or `huggingface-cli login`).
 
@@ -121,7 +122,7 @@ app/
   main.py        FastAPI app, CORS, router registration, SPA static serving
   routers/       One module per API area (thin HTTP layer)
   services/      Analysis logic
-    adapter.py   Common interface over tiktoken / HF / SentencePiece / TokenMonster
+    adapter.py   Common interface over tiktoken / HF / SentencePiece / TokenMonster / script_tok
     registry.py  Name resolution and LRU cache of loaded tokenizers
     tokeval_wrapper.py  Adapter -> tokenizer-intrinsic-evals TokenizerWrapper
                         (tiktoken is converted to an equivalent tokenizers.Tokenizer)
