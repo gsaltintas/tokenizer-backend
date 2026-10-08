@@ -167,6 +167,54 @@ class ComparisonTokenizeResponse(BaseModel):
     text: str
 
 
+class ComparisonTextRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=5000)
+    tokenizer_ids: list[str] = Field(..., min_length=2)
+
+
+class PretokenChunk(BaseModel):
+    text: str
+    start: int
+    end: int
+
+
+class TokenizerPretokenization(BaseModel):
+    tokenizer_id: str
+    normalization_type: str
+    normalized_text: str
+    normalization_changed: bool
+    pretokenizer_type: str
+    pretokenizer_description: str
+    regex_pattern: str | None
+    chunks: list[PretokenChunk]
+    tokens: list[TokenInfo]
+    # (start, end) of each token in the input; exact for Hugging Face tokenizers even
+    # when normalization rewrites the text, unlike the search-based offsets in `tokens`
+    token_spans: list[tuple[int, int]]
+    # Interior offsets into the input text where a chunk / token starts or ends
+    chunk_boundaries: list[int]
+    token_boundaries: list[int]
+    # Normalization changed the text and chunk offsets could only be estimated
+    offsets_approximate: bool
+    tokens_per_chunk: float
+    # Tokens that span a chunk boundary, i.e. the model merged across pre-tokens
+    chunk_crossing_tokens: int
+
+
+class ComparisonPretokenizeResponse(BaseModel):
+    text: str
+    results: list[TokenizerPretokenization]
+    # Pairwise boundary F1, indexed like results
+    chunk_agreement: list[list[float]]
+    token_agreement: list[list[float]]
+
+
+class ComparisonFloresRequest(BaseModel):
+    tokenizer_ids: list[str] = Field(..., min_length=2)
+    language_codes: list[str] = Field(..., min_length=1)
+    n_samples: int = Field(200, ge=1, le=1012)
+
+
 class EfficiencyRequest(BaseModel):
     tokenizer_ids: list[str] = Field(..., min_length=2)
     sample_texts: list[str] | None = None

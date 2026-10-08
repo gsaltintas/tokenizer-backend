@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import (
+    ComparisonFloresRequest,
     ComparisonOverlapRequest,
+    ComparisonPretokenizeResponse,
+    ComparisonTextRequest,
     ComparisonTokenizeRequest,
     ComparisonTokenizeResponse,
     EfficiencyMetric,
@@ -11,7 +14,13 @@ from app.models.schemas import (
     TokenizerTokenization,
     TokenInfo,
 )
-from app.services.comparison import compare_tokenization, compute_efficiency, compute_overlap
+from app.services.comparison import (
+    compare_pretokenization,
+    compare_tokenization,
+    compute_efficiency,
+    compute_overlap,
+)
+from app.services.intrinsic_eval import flores_gini_metrics, per_text_metrics
 from app.services.registry import registry
 
 router = APIRouter(prefix="/api/comparison", tags=["comparison"])
@@ -40,8 +49,6 @@ async def get_overlap(req: ComparisonOverlapRequest):
 async def compare_tokenize(req: ComparisonTokenizeRequest):
     adapters = _get_adapters(req.tokenizer_ids)
     results = compare_tokenization(adapters, req.text)
-    print(results)
-    print(adapters)
     return ComparisonTokenizeResponse(
         results=[
             TokenizerTokenization(
@@ -62,3 +69,38 @@ async def compare_efficiency(req: EfficiencyRequest):
     return EfficiencyResponse(
         metrics=[EfficiencyMetric(**r) for r in results]
     )
+
+
+# The endpoints below are plain `def`: FastAPI runs them in a worker thread, so a slow
+# comparison doesn't block other requests.
+
+
+@router.post("/pretokenize", response_model=ComparisonPretokenizeResponse)
+def compare_pretokenize(req: ComparisonTextRequest):
+    """Normalization, pre-token chunks and tokens per tokenizer, with pairwise boundary agreement."""
+    adapters = _get_adapters(req.tokenizer_ids)
+    return compare_pretokenization(adapters, req.text)
+
+
+@router.post("/intrinsic")
+def compare_intrinsic(req: ComparisonTextRequest):
+    """TokEval per-text metrics for each tokenizer on the same text."""
+    adapters = _get_adapters(req.tokenizer_ids)
+    return {
+        "results": [
+            {"tokenizer_id": tok_id, "metrics": per_text_metrics(adapter, req.text)}
+            for tok_id, adapter in adapters.items()
+        ]
+    }
+
+
+@router.post("/flores")
+def compare_flores(req: ComparisonFloresRequest):
+    """FLORES+ per-language compression and Gini for each tokenizer, on the same sentences."""
+    adapters = _get_adapters(req.tokenizer_ids)
+    return {
+        "results": [
+            {"tokenizer_id": tok_id, **flores_gini_metrics(adapter, req.language_codes, req.n_samples)}
+            for tok_id, adapter in adapters.items()
+        ]
+    }

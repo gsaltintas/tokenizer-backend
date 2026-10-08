@@ -8,6 +8,7 @@ corpus pipeline with custom adapters).
 """
 
 import math
+from functools import lru_cache
 from typing import Any
 
 from app.services.adapter import TokenizerAdapter
@@ -101,18 +102,11 @@ def flores_gini_metrics(
 ) -> dict[str, Any]:
     """Load FLORES+ for each language, tokenize, compute per-language fertility
     and compression rate, then return the Gini coefficient across languages."""
-    from datasets import load_dataset
-
     per_language: list[dict[str, Any]] = []
 
     for lang_code in language_codes:
         try:
-            ds = load_dataset(
-                "openlanguagedata/flores_plus",
-                lang_code,
-                split="devtest",
-            )
-            texts: list[str] = ds["text"][:n_samples]  # type: ignore[index]
+            texts = _flores_texts(lang_code, n_samples)
         except Exception as exc:
             per_language.append({
                 "code": lang_code,
@@ -169,6 +163,16 @@ def flores_gini_metrics(
         "n_languages": len(valid),
         "per_language": per_language,
     }
+
+
+@lru_cache(maxsize=64)
+def _flores_texts(lang_code: str, n_samples: int) -> list[str]:
+    """First n_samples FLORES+ devtest sentences, kept in memory so comparing several
+    tokenizers (or re-running) doesn't reload the dataset."""
+    from datasets import load_dataset
+
+    ds = load_dataset("openlanguagedata/flores_plus", lang_code, split="devtest")
+    return list(ds["text"][:n_samples])  # type: ignore[index]
 
 
 def _gini(values: list[float]) -> float:
