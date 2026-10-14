@@ -20,6 +20,22 @@ class NormalizationInfo:
 
 
 @dataclass
+class EncodedUnit:
+    """A character (or a digit group) of the normalized text and the atomic tokens it maps to."""
+
+    text: str
+    atomic_ids: list[int]
+    atomic_labels: list[str]  # e.g. ["<|BLOCK_Latin_LM_0|>", "<|SCRIPT_INDEX_211|>"]
+
+
+@dataclass
+class EncodingInfo:
+    type: str  # "script_encoding" or "utf8"
+    description: str
+    units: list[EncodedUnit]
+
+
+@dataclass
 class PretokenizeResult:
     normalization: NormalizationInfo
     chunks: list[str]
@@ -28,6 +44,8 @@ class PretokenizeResult:
     pretokenizer_type: str
     pretokenizer_description: str
     regex_pattern: str | None
+    # script_tok encodes text into atomic tokens before pre-tokenization; None for others
+    encoding: EncodingInfo | None = None
 
 
 def _norm_info(raw: str, norm_type: str) -> NormalizationInfo:
@@ -233,6 +251,12 @@ def _analyze_script_tok(adapter: ScriptTokAdapter, text: str) -> PretokenizeResu
     if config.enforce_char_boundaries:
         steps.append("merges respect character boundaries")
     description = f"script_tok: {', '.join(steps) or 'no splitting'}; encoded as {units}"
+    encoding = EncodingInfo(
+        type=pretokenizer_type,
+        description=f"Each character is encoded as {units} before pre-tokenization"
+        + (f"; digit groups ({config.digit_handling}) get their own token" if config.digit_handling else ""),
+        units=_script_tok_units(pt, normalized),
+    )
 
     return PretokenizeResult(
         normalization=norm,
@@ -242,4 +266,27 @@ def _analyze_script_tok(adapter: ScriptTokAdapter, text: str) -> PretokenizeResu
         pretokenizer_type=pretokenizer_type,
         pretokenizer_description=description,
         regex_pattern=config.regex_pattern,
+        encoding=encoding,
     )
+
+
+def _script_tok_units(pt, normalized: str) -> list[EncodedUnit]:
+    """Per-character atomic tokens, following Pretokenizer.split_unencoded_and_encode: digit
+    runs are split off and grouped first when digit_handling is set."""
+    import regex as re
+    from script_bpe.pretokenize.pretokenizer import group_digits
+
+    handling = pt.config.digit_handling
+    parts = [normalized] if handling is None else re.split("([0-9]+)", normalized)
+    pieces: list[tuple[str, list[int]]] = []
+    for i, part in enumerate(parts):
+        if i % 2 == 0 or handling is None:
+            for c in part:
+                pieces.append((c, [int(a) for enc in pt.encode_text(c) for a in enc.atomic_token_ids]))
+        else:
+            for group in group_digits(part, handling):
+                pieces.append((group, [int(pt.token_to_id[group])]))
+    return [
+        EncodedUnit(text=t, atomic_ids=ids, atomic_labels=[pt.atomic_tokens[a] for a in ids])
+        for t, ids in pieces
+    ]
