@@ -1,4 +1,5 @@
 import os
+import posixpath
 from collections import OrderedDict
 
 from app.services.adapter import (
@@ -36,23 +37,32 @@ SCRIPT_TOK_PRESETS = [
 ]
 
 
-def download_script_tok(spec: str) -> str:
+def script_tok_files(repo_id: str, folder: str) -> list[str]:
+    """The .json/.json.gz files directly in `folder` of a Hub repo."""
+    from huggingface_hub import list_repo_files
+
+    folder = folder.strip("/")
+    return [
+        f for f in list_repo_files(repo_id)
+        if posixpath.dirname(f) == folder and f.endswith(SCRIPT_TOK_SUFFIXES)
+    ]
+
+
+def download_script_tok(spec: str, subfolder: str | None = None) -> str:
     """Download "<repo>" or "<repo>/<file>" from the Hub; returns the local path. With only
-    a repo, it must hold exactly one .json/.json.gz file under tokenizer/."""
-    from huggingface_hub import hf_hub_download, list_repo_files
+    a repo, it must hold exactly one .json/.json.gz file in `subfolder` (default tokenizer/)."""
+    from huggingface_hub import hf_hub_download
 
     owner, repo, *rest = spec.split("/", 2)
     repo_id = f"{owner}/{repo}"
+    folder = (subfolder or "tokenizer").strip("/")
     if rest:
-        filename = rest[0]
+        filename = posixpath.join(subfolder.strip("/"), rest[0]) if subfolder else rest[0]
     else:
-        candidates = [
-            f for f in list_repo_files(repo_id)
-            if f.startswith("tokenizer/") and f.endswith(SCRIPT_TOK_SUFFIXES)
-        ]
+        candidates = script_tok_files(repo_id, folder)
         if len(candidates) != 1:
             raise ValueError(
-                f"Expected one script_tok tokenizer under tokenizer/ in {repo_id}, "
+                f"Expected one script_tok tokenizer in {folder}/ of {repo_id}, "
                 f"found {candidates}; name the file as {SCRIPT_TOK_PREFIX}{repo_id}/<file>"
             )
         filename = candidates[0]
@@ -111,9 +121,11 @@ class TokenizerRegistry:
             return TokenMonsterAdapter(name)
 
         # 4. Check if it's a script_tok tokenizer (on the Hub, or a saved .json/.json.gz path)
+        display_name = f"{name}/{subfolder.strip('/')}" if subfolder else name
         if name.startswith(SCRIPT_TOK_PREFIX):
             return ScriptTokAdapter(
-                download_script_tok(name.removeprefix(SCRIPT_TOK_PREFIX)), name=name
+                download_script_tok(name.removeprefix(SCRIPT_TOK_PREFIX), subfolder),
+                name=display_name,
             )
         if name.endswith(SCRIPT_TOK_SUFFIXES) and os.path.exists(name):
             return ScriptTokAdapter(name)
@@ -122,11 +134,22 @@ class TokenizerRegistry:
         try:
             return HuggingFaceAdapter(name, subfolder=subfolder)
         except Exception as e:
-            raise ValueError(
-                f"Could not load tokenizer '{name}'. "
-                f"Tried tiktoken presets, file path, and HuggingFace. "
-                f"HuggingFace error: {e}"
-            )
+            hf_error = e
+
+        # 6. A Hub repo (or subfolder) holding a script_tok tokenizer.json.gz, which
+        # AutoTokenizer can't read
+        try:
+            found = script_tok_files(name, subfolder or "") if name.count("/") == 1 else []
+        except Exception:
+            found = []
+        if len(found) == 1:
+            return ScriptTokAdapter(download_script_tok(f"{name}/{found[0]}"), name=display_name)
+
+        raise ValueError(
+            f"Could not load tokenizer '{name}'. "
+            f"Tried tiktoken presets, file path, HuggingFace and script_tok. "
+            f"HuggingFace error: {hf_error}"
+        )
 
     def reload(self, name: str, subfolder: str | None = None) -> TokenizerAdapter:
         """Evict a tokenizer from cache and reload it fresh."""
