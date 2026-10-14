@@ -228,6 +228,8 @@ def _analyze_script_tok(adapter: ScriptTokAdapter, text: str) -> PretokenizeResu
         units = "(script block, index) pairs per character (SCRIPT encoding)"
         if getattr(config, "script_split", False):
             steps.append("split where the Unicode script changes")
+    if getattr(config, "split_line_breaks", False):
+        steps.append("line breaks split from indentation")
     if config.enforce_char_boundaries:
         steps.append("merges respect character boundaries")
     description = f"script_tok: {', '.join(steps) or 'no splitting'}; encoded as {units}"

@@ -2594,7 +2594,7 @@ wheels = [
 [[package]]
 name = "script-bpe"
 version = "0.7.0"
-source = { git = "https://github.com/sanderland/script_tok#37f48e25c3eddf950affdc4ce2d2db213532cea1" }
+source = { git = "https://github.com/cimeister/script_tok?branch=split-line-breaks#d3298534e3953c36e3ad3b36b1a3fe1adcc92050" }
 dependencies = [
     { name = "cyclopts" },
     { name = "datasets" },
@@ -2843,7 +2843,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "protobuf", specifier = ">=7.36.1" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "script-bpe", git = "https://github.com/sanderland/script_tok" },
+    { name = "script-bpe", git = "https://github.com/cimeister/script_tok?branch=split-line-breaks" },
     { name = "sentencepiece", specifier = ">=0.2" },
     { name = "tiktoken", specifier = ">=0.7" },
     { name = "tokenizer-intrinsic-evals", git = "https://github.com/cimeister/tokenizer-intrinsic-evals.git" },

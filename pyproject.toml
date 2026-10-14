@@ -27,7 +27,8 @@ line-length = 100
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 tokenizer-intrinsic-evals = { git = "https://github.com/cimeister/tokenizer-intrinsic-evals.git" }
-script-bpe = { git = "https://github.com/sanderland/script_tok" }
+# split-line-breaks adds ScriptPretokenizer(split_line_breaks=...), used by the scriptenc_*_nl tokenizers
+script-bpe = { git = "https://github.com/cimeister/script_tok", branch = "split-line-breaks" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
