@@ -18,6 +18,18 @@ class NormalizationInfoOut(BaseModel):
     changed: bool
 
 
+class EncodedUnitOut(BaseModel):
+    text: str
+    atomic_ids: list[int]
+    atomic_labels: list[str]
+
+
+class EncodingInfoOut(BaseModel):
+    type: str
+    description: str
+    units: list[EncodedUnitOut]
+
+
 class PretokenizeResponse(BaseModel):
     normalization: NormalizationInfoOut
     chunks: list[str]
@@ -26,6 +38,7 @@ class PretokenizeResponse(BaseModel):
     pretokenizer_type: str
     pretokenizer_description: str
     regex_pattern: str | None
+    encoding: EncodingInfoOut | None = None
 
 
 @router.post("", response_model=PretokenizeResponse)
@@ -46,4 +59,7 @@ async def pretokenize_text(req: PretokenizeRequest):
         pretokenizer_type=result.pretokenizer_type,
         pretokenizer_description=result.pretokenizer_description,
         regex_pattern=result.regex_pattern,
+        encoding=EncodingInfoOut.model_validate(result.encoding, from_attributes=True)
+        if result.encoding
+        else None,
     )
