@@ -32,7 +32,7 @@ class UStatRequest(BaseModel):
     across_spaces: bool = True
 
 
-@router.post("/{tokenizer_id}/ustat")
+@router.post("/{tokenizer_id:path}/ustat")
 async def ustat(tokenizer_id: str, req: UStatRequest):
     """U-statistic boundary metrics (Lopardo et al., arXiv:2610.21679)."""
     adapter = registry.get(tokenizer_id)
