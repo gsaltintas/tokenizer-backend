@@ -7,6 +7,7 @@ from app.services.intrinsic_eval import (
     per_text_metrics,
 )
 from app.services.registry import registry
+from app.services.ustat import compute_ustat
 
 router = APIRouter(prefix="/api/intrinsic-eval", tags=["intrinsic-eval"])
 
@@ -21,6 +22,41 @@ class FloresRequest(BaseModel):
         description="FLORES+ language codes to evaluate",
     )
     n_samples: int = Field(200, ge=1, le=1012)
+
+
+class UStatRequest(BaseModel):
+    language_code: str | None = Field(None, description="FLORES+ language code to use as corpus")
+    text: str | None = Field(None, description="Custom corpus (used if language_code is not set)")
+    n_samples: int = Field(500, ge=1, le=1012)
+    lam: float = Field(4.0, ge=0, le=100, description="Weight on branching entropy (paper: 4.0)")
+    across_spaces: bool = True
+
+
+@router.post("/{tokenizer_id}/ustat")
+async def ustat(tokenizer_id: str, req: UStatRequest):
+    """U-statistic boundary metrics (Lopardo et al., arXiv:2610.21679)."""
+    adapter = registry.get(tokenizer_id)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail=f"Tokenizer '{tokenizer_id}' not loaded")
+
+    if req.language_code:
+        try:
+            from datasets import load_dataset
+
+            ds = load_dataset("openlanguagedata/flores_plus", req.language_code, split="devtest")
+            texts = list(ds["text"][: req.n_samples])
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Could not load FLORES+ corpus: {exc}")
+    elif req.text and req.text.strip():
+        texts = [ln for ln in req.text.splitlines() if ln.strip()]
+    else:
+        raise HTTPException(status_code=422, detail="Provide language_code or text")
+
+    try:
+        result = compute_ustat(adapter, texts, req.lam, req.across_spaces)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"tokenizer_id": tokenizer_id, **result}
 
 
 @router.get("/languages")
