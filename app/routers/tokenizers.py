@@ -24,6 +24,19 @@ async def list_tokenizers():
     )
 
 
+@router.delete("")
+async def unload_all_tokenizers():
+    """Unload every cached tokenizer. Safe for other users: a request that names an
+    unloaded tokenizer loads it again."""
+    return {"unloaded": registry.unload()}
+
+
+@router.delete("/{tokenizer_id:path}")
+async def unload_tokenizer(tokenizer_id: str):
+    """Unload one cached tokenizer by id (`name` or `name::subfolder`)."""
+    return {"unloaded": registry.unload(tokenizer_id)}
+
+
 @router.post("/{name:path}/reload", response_model=LoadTokenizerResponse)
 async def reload_tokenizer(name: str):
     """Evict a tokenizer from the cache and reload it fresh."""

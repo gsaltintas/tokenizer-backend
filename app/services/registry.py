@@ -1,5 +1,8 @@
+import logging
 import os
 import posixpath
+import threading
+import time
 from collections import OrderedDict
 
 from app.services.adapter import (
@@ -82,29 +85,72 @@ TIKTOKEN_ENCODINGS = {
 }
 
 
+logger = logging.getLogger(__name__)
+
+
 class TokenizerRegistry:
-    """Loads and caches tokenizer adapters with an LRU policy."""
+    """Loads and caches tokenizer adapters with an LRU policy.
+
+    The cache is shared by every visitor. Evicting a tokenizer is always safe: `get`
+    loads it again on the next request that names it.
+    """
 
     def __init__(self, max_cache_size: int = 10):
         self._cache: OrderedDict[str, TokenizerAdapter] = OrderedDict()
+        self._last_used: dict[str, float] = {}
         self._max_cache_size = max_cache_size
+        # sync endpoints run in a thread pool, next to the idle-eviction task
+        self._lock = threading.RLock()
 
     @staticmethod
     def _cache_key(name: str, subfolder: str | None) -> str:
         return f"{name}::{subfolder}" if subfolder else name
 
+    @staticmethod
+    def _split_key(key: str) -> tuple[str, str | None]:
+        name, sep, subfolder = key.partition("::")
+        return name, (subfolder if sep else None)
+
+    def _touch(self, key: str) -> TokenizerAdapter:
+        self._cache.move_to_end(key)
+        self._last_used[key] = time.monotonic()
+        return self._cache[key]
+
     def load(self, name: str, subfolder: str | None = None) -> TokenizerAdapter:
         """Load a tokenizer by name, HuggingFace model ID, or file path."""
         key = self._cache_key(name, subfolder)
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            return self._cache[key]
+        with self._lock:
+            if key in self._cache:
+                return self._touch(key)
 
+        # Outside the lock: loading can take a while (Hub downloads)
         adapter = self._create_adapter(name, subfolder)
-        self._cache[key] = adapter
-        if len(self._cache) > self._max_cache_size:
-            self._cache.popitem(last=False)
+        with self._lock:
+            self._cache[key] = adapter
+            self._touch(key)
+            while len(self._cache) > self._max_cache_size:
+                evicted, _ = self._cache.popitem(last=False)
+                self._last_used.pop(evicted, None)
         return adapter
+
+    def unload(self, key: str | None = None) -> list[str]:
+        """Drop one tokenizer (by id), or all of them; returns the ids dropped."""
+        with self._lock:
+            keys = list(self._cache) if key is None else [key] if key in self._cache else []
+            for k in keys:
+                self._cache.pop(k)
+                self._last_used.pop(k, None)
+        return keys
+
+    def evict_idle(self, max_idle_s: float) -> list[str]:
+        """Drop tokenizers that no request has used for `max_idle_s` seconds."""
+        cutoff = time.monotonic() - max_idle_s
+        with self._lock:
+            idle = [k for k in self._cache if self._last_used.get(k, 0) < cutoff]
+            for k in idle:
+                self._cache.pop(k)
+                self._last_used.pop(k, None)
+        return idle
 
     def _create_adapter(self, name: str, subfolder: str | None = None) -> TokenizerAdapter:
         # 1. Check if it's a tiktoken encoding
@@ -153,16 +199,19 @@ class TokenizerRegistry:
 
     def reload(self, name: str, subfolder: str | None = None) -> TokenizerAdapter:
         """Evict a tokenizer from cache and reload it fresh."""
-        key = self._cache_key(name, subfolder)
-        self._cache.pop(key, None)
+        self.unload(self._cache_key(name, subfolder))
         return self.load(name, subfolder)
 
     def get(self, name: str) -> TokenizerAdapter | None:
-        """Get a cached tokenizer, or None if not loaded."""
-        if name in self._cache:
-            self._cache.move_to_end(name)
-            return self._cache[name]
-        return None
+        """Get a tokenizer by id, loading it again if it was evicted; None if it can't load."""
+        with self._lock:
+            if name in self._cache:
+                return self._touch(name)
+        try:
+            return self.load(*self._split_key(name))
+        except Exception as e:
+            logger.warning("Could not reload evicted tokenizer %r: %s", name, e)
+            return None
 
     def list_loaded(self) -> list[dict]:
         """List all currently loaded tokenizers."""
@@ -174,7 +223,7 @@ class TokenizerRegistry:
                 "vocab_size": adapter.vocab_size(),
                 "source": adapter.source,
             }
-            for name, adapter in self._cache.items()
+            for name, adapter in list(self._cache.items())
         ]
 
     def list_available(self) -> list[dict]:
