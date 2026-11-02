@@ -1,3 +1,7 @@
+import asyncio
+import gc
+import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,11 +26,32 @@ from app.routers import (
     visualize,
     vocabulary,
 )
+from app.services.registry import registry
+
+
+logger = logging.getLogger(__name__)
+
+# Tokenizers no request has used for this many minutes are unloaded (0 disables).
+# Unloading is safe: the next request that names one loads it again.
+IDLE_TTL_MIN = float(os.environ.get("TOKENIZER_IDLE_TTL_MIN", "30"))
+IDLE_CHECK_S = 300
+
+
+async def _evict_idle_tokenizers():
+    while True:
+        await asyncio.sleep(IDLE_CHECK_S)
+        evicted = registry.evict_idle(IDLE_TTL_MIN * 60)
+        if evicted:
+            gc.collect()
+            logger.warning("Unloaded idle tokenizers: %s", ", ".join(evicted))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_evict_idle_tokenizers()) if IDLE_TTL_MIN > 0 else None
     yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(
